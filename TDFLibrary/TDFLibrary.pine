@@ -1,0 +1,141 @@
+//@version=6
+library("TDFLibrary")
+
+enum TDFState
+    NONE
+    PARTICIPATION
+    EARLY_PARTICIPATION
+    ACCUMULATION
+    CAPITULATION
+    TRANSITION
+    FADING_PARTICIPATION
+    FADING_CAPITULATION
+
+// --- helpers (global scope) ---
+getPctP(int _period) =>
+    p  = math.max(1, _period)
+    hi = ta.highest(high, p)
+    lo = ta.lowest(low,  p)
+    (hi - lo) == 0 ? na : math.round((close - lo) / (hi - lo) * 100.0, 0)
+
+getPctB(int _period) =>
+    p = math.max(1, _period)
+    basis = ta.sma(close, p)
+    dev   = 2.0 * ta.stdev(close, p)
+    upper = basis + dev
+    lower = basis - dev
+    (upper - lower) == 0 ? na : math.round((close - lower) / (upper - lower) * 100.0, 0)
+
+getPctV(int _period, int _baseline) =>
+    p  = math.max(1, _period)
+    bl = math.max(1, _baseline)
+    v    = ta.sma(volume, p)
+    base = ta.sma(volume, bl)
+    base == 0 ? na : (v / base) * 50.0
+
+// Translate the tdf matrix values into a state enumeration value.
+getMatrixState(float p1, float p3, float p5, float b1, float b3, float v1, float v3, float rating) =>
+    // --- Primary State Flags ---
+    isConfirmedParticipation = (p1 > 50 and p1 >= p3 and b1 > 60 and b1 >= b3 and v1 > 70 and v3 > 70 and rating > 65)
+    isEarlyParticipation     = (p1 > 50 and p1 >= p3 and b1 > 60 and b1 >= b3 and v1 >= 60 and v1 >= v3 and (v1 < 70 or v3 < 70) and rating > 65)
+    isAccumulation           = (p1 < 25 and p3 < 25 and b1 > 50 and b1 >= b3 and v1 > 50 and v1 >= v3 and rating > 45 and rating < 65)
+    isCapitulation           = (p1 < 20 and p3 < 20 and b1 < 25 and b1 <= b3 and ((v1 < 40 and v1 <= v3) or (v1 > 70 and v1 >= v3)) and rating < 40)
+    isTransition             = (rating >= 40 and rating <= 65 and not isConfirmedParticipation and not isEarlyParticipation and not isAccumulation and not isCapitulation)
+    isFadingParticipation    = (not isConfirmedParticipation and not isEarlyParticipation and rating > 65 and (p1 < p3 or b1 < b3 or v1 < v3))
+    isFadingCapitulation     = (not isCapitulation and rating < 40 and (p1 > p3 or b1 > b3 or v1 > v3))
+
+    // --- State Assignment ---
+    state = 0  // NONE
+    if isConfirmedParticipation
+        state := 1  // PARTICIPATION
+    else if isEarlyParticipation
+        state := 2  // EARLY PARTICIPATION
+    else if isAccumulation
+        state := 3  // ACCUMULATION
+    else if isCapitulation
+        state := 4  // CAPITULATION
+    else if isTransition
+        state := 5  // TRANSITION
+    else if isFadingParticipation
+        state := 6  // FADING PARTICIPATION
+    else if isFadingCapitulation
+        state := 7  // FADING CAPITULATION
+
+    state
+
+// --- exported: compute using the *current* context's OHLCV ---
+export computeMatrix(int prPeriod=4, int bbPeriod=12, int volPeriod=4) =>
+    // %P stack
+    p1  = getPctP(prPeriod)
+    p3  = getPctP(prPeriod * 3)
+    p5  = getPctP(prPeriod * 5)
+    p10 = getPctP(prPeriod * 10)
+    px  = (p1 + p3 + p5 + p10) / 4.0
+
+    // %B stack
+    b1  = getPctB(bbPeriod)
+    b3  = getPctB(bbPeriod * 3)
+    b5  = getPctB(bbPeriod * 5)
+    b10 = getPctB(bbPeriod * 10)
+    bx  = (b1 + b3 + b5 + b10) / 4.0
+
+    // %V stack
+    v1  = getPctV(volPeriod, volPeriod * 10)
+    v3  = getPctV(volPeriod * 3, volPeriod * 10)
+    v5  = getPctV(volPeriod * 5, volPeriod * 10)
+    v10 = 50.0
+    vx  = (v1 + v3 + v5 + v10) / 4.0
+
+    // vertical composites
+    y1  = (p1 + b1 + v1) / 3.0
+    y3  = (p3 + b3 + v3) / 3.0
+    y5  = (p5 + b5 + v5) / 3.0
+    y10 = (p10 + b10 + v10) / 3.0
+
+    // final rating
+    xComposite = (px + bx + vx) / 3.0
+    yComposite = (y1 + y3 + y5 + y10) / 4.0
+    rating = (xComposite + yComposite) / 2.0
+    
+    state = getMatrixState(p1, p3, p5, b1, b3, v1, v3, rating)
+
+    [p1, p3, p5, p10, px, b1, b3, b5, b10, bx, v1, v3, v5, v10, vx, y1, y3, y5, y10, rating, state]
+
+// Returns the overal TDF Rating and State of the matrix
+export getRating(int prPeriod=4, int bbPeriod=12, int volPeriod=4) =>
+    [p1, p3, p5, p10, px, b1, b3, b5, b10, bx, v1, v3, v5, v10, vx, y1, y3, y5, y10, rating, state] = computeMatrix(prPeriod, bbPeriod, volPeriod)  
+    [rating, state]
+
+// Returns the overall TDF Rating, Maxtrix State %X composite values for %P, %B, %V and %Y composites for 1X, 3X, 5X and 10X.
+export getComposites(int prPeriod=4, int bbPeriod=12, int volPeriod=4) =>
+    [p1, p3, p5, p10, px, b1, b3, b5, b10, bx, v1, v3, v5, v10, vx, y1, y3, y5, y10, rating, state] = computeMatrix(prPeriod, bbPeriod, volPeriod)
+    [rating, state, px, bx, vx, y1, y3, y5, y10]
+
+// Returns the overall TDF Rating, Matrix State and %P1, %P3, %P5, %B1, %V1 for a quick view.
+export getCoreMetrics(int prPeriod=4, int bbPeriod=12, int volPeriod=4) =>
+    [p1, p3, p5, p10, px, b1, b3, b5, b10, bx, v1, v3, v5, v10, vx, y1, y3, y5, y10, rating, state] = computeMatrix(prPeriod, bbPeriod, volPeriod)
+    [rating, state, p1, p3, p5, b1, v1]
+
+// Translate the Matrix State into a text description
+export getStateDescription(int state) =>
+    switch state
+        1 => "🟩 Participation — Strong %$, %B, %V with short-term stacks leading, TDF >65%"
+        2 => "🟧 Early Participation — Strength building in %$ and %B, volume supportive, TDF >65%"
+        3 => "🟦 Accumulation — Weak %$, rising %B and %V from longer-term base, TDF 45–65%"
+        4 => "🟥 Capitulation — Failing %$, %B with volume spike or fade, TDF <40%"
+        5 => "⬜ Transition — No stack leadership, TDF in neutral zone (40–65%)"
+        6 => "🟨 Fading Participation — Short-term pressure weakening vs mid-term, TDF still high"
+        7 => "🟪 Fading Capitulation — Panic fading, short-term values recovering, TDF remains low"
+        => "⬛ No clear structure — disqualified stack or composite misalignment"
+
+// Return the Matrix State emoji icon for the specified state value.
+export getStateEmoji(int state) =>
+    switch state
+        1 => "🟩"  // Participation
+        2 => "🟧"  // Early Participation
+        3 => "🟦"  // Accumulation
+        4 => "🟥"  // Capitulation
+        5 => "⬜"  // Transition
+        6 => "🟨"  // Fading Participation
+        7 => "🟪"  // Fading Capitulation
+        => "⬛"    // None or unknown        

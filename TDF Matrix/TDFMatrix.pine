@@ -1,0 +1,144 @@
+//@version=6
+indicator("668 TDF Matrix", shorttitle = "TDF Matrix", overlay = false)
+
+// Documentation:
+// This TradingView Pine script ("668 TDF Matrix") computes three percentile measures:
+//  - %P: price range percentile over several multiples of prPeriod
+//  - %B: Bollinger %B percentile over several multiples of bbPeriod
+//  - %V: normalized volume percentile relative to a baseline
+// It then builds X and Y composites and a final "TDF Rating", renders a 6x5 table,
+// and emits a JSON string (logged via log.info) on the last bar.
+
+import RMCapital668/TDFLibrary/9 as tdfLib
+
+prPeriod = input.int(4, "%P Basis", minval=1, tooltip = "Basis period for historical price range.")
+bbPeriod = input.int(12, "%B Basis", minval=1, tooltip = "Base period for Bollinger Band %B")
+volPeriod = input.int(4, "%V Basis", minval=1, tooltip = "Base period for volume")
+colorLow = input.color(color.rgb(242, 54, 69), "Begin Color", tooltip = "Low range color of gradient shading.")
+colorHigh = input.color(color.rgb(34, 171, 148), "End Color", tooltip = "High range color of gradient shading.")
+colorParticipation = input.color(color.rgb(180, 80, 60), "Participation")
+colorEnergy = input.color(color.rgb(180, 140, 60), "Breadth")
+colorPosition = input.color(color.rgb(75, 115, 195), "Position")
+colorText = input.color(color.white, "Text Color", tooltip = "Text color for range and headng values.")
+colorHeading = input.color(color.new(color.gray, 80), "Headings", tooltip = "Background color for table headings.")
+
+opacity = input.int(50, "Opacity", tooltip = "Gradient shading opacity level.")
+
+tblMatrix = table.new(position.middle_center, 6, 6, border_width = 1)
+cellWidth = 100 / 6
+cellHeight = 100 / 6
+
+getIntensityColor(float value, float min, float max, color baseColor) =>
+    // Calm reference
+    float calmLevel = min
+    float maxEnergy = max
+
+    // Only count energy ABOVE calm
+    float distance = math.max(value - calmLevel, 0)
+
+    // Normalize to 0–1
+    float norm = distance / (maxEnergy - calmLevel)
+    norm := math.min(norm, 1)
+
+    // Map to transparency (lower = stronger)
+    int intensity = 90 - int(norm * 70)
+    color.new(baseColor, intensity)
+
+getColor(value, opacity) =>
+    color.new(color.from_gradient(value, 0, 100, colorLow, colorHigh), opacity)
+
+// %P calculation: Price range percentile
+getPctP(_period) =>
+    hi = ta.highest(high, _period)
+    lo = ta.lowest(low, _period)
+    (hi - lo) == 0 ? na : math.round((close - lo) / (hi - lo) * 100, 0)
+
+// %B calculation: Bollinger band percentile
+getPctB(_period) =>
+    [_, u, l] = ta.bb(close, _period, 2)
+    (u - l) == 0 ? na : math.round((close - l) / (u - l) * 100, 0)
+
+// %V calculation: Volume normalized to 50 midpoint baseline
+getPctV(_period, _baseline) =>
+    v = ta.sma(volume, _period)
+    base = ta.sma(volume, _baseline)
+    base == 0 ? na : (v / base) * 50
+
+formatPercent(x) =>
+    na(x) ? "—" : str.format("{0,number,#0}%", x)    
+
+[p1, p3, p5, p10, px, b1, b3, b5, b10, bx, v1, v3, v5, v10, vx, y1, y3, y5, y10, tdfRating, tdfState] = tdfLib.computeMatrix(prPeriod, bbPeriod, volPeriod)
+
+// %P Values
+table.cell(tblMatrix, 5, 1, formatPercent(px), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(px, 0, 100, colorParticipation), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 4, 1, formatPercent(p1), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(p1, 0, 100, colorParticipation), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 3, 1, formatPercent(p3), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(p3, 0, 100, colorParticipation), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 2, 1, formatPercent(p5), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(p5, 0, 100, colorParticipation), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 1, 1, formatPercent(p10), text_size = 15, text_color = colorText, bgcolor =getIntensityColor(p10, 0, 100, colorParticipation), width = cellWidth, height = cellHeight)
+
+// %B Values
+//table.cell(tblMatrix, 5, 2, str.format("{0, number, #}%", bx), text_size = 15, text_color = colorText, bgcolor = getColor(bx, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 4, 2, str.format("{0, number, #}%", b1), text_size = 15, text_color = colorText, bgcolor = getColor(b1, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 3, 2, str.format("{0, number, #}%", b3), text_size = 15, text_color = colorText, bgcolor = getColor(b3, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 2, 2, str.format("{0, number, #}%", b5), text_size = 15, text_color = colorText, bgcolor = getColor(b5, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 1, 2, str.format("{0, number, #}%", b10), text_size = 15, text_color = colorText, bgcolor = getColor(b10, opacity), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 5, 2, formatPercent(bx), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(bx, 0, 100, colorPosition), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 4, 2, formatPercent(b1), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(b1, 0, 100, colorPosition), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 3, 2, formatPercent(b3), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(b3, 0, 100, colorPosition), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 2, 2, formatPercent(b5), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(b5, 0, 100, colorPosition), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 1, 2, formatPercent(b10), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(b10, 0, 100, colorPosition), width = cellWidth, height = cellHeight)
+
+// %V Values
+//table.cell(tblMatrix, 5, 3, str.format("{0, number, #}%", vx), text_size = 15, text_color = colorText, bgcolor = getColor(vx, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 4, 3, str.format("{0, number, #}%", v1), text_size = 15, text_color = colorText, bgcolor = getColor(v1, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 3, 3, str.format("{0, number, #}%", v3), text_size = 15, text_color = colorText, bgcolor = getColor(v3, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 2, 3, str.format("{0, number, #}%", v5), text_size = 15, text_color = colorText, bgcolor = getColor(v5, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 1, 3, str.format("{0, number, #}%", v10), text_size = 15, text_color = colorText, bgcolor = getColor(v10, opacity), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 5, 3, formatPercent(vx), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(vx, 0, 100, colorEnergy), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 4, 3, formatPercent(v1), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(v1, 0, 100, colorEnergy), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 3, 3, formatPercent(v3), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(v3, 0, 100, colorEnergy), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 2, 3, formatPercent(v5), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(v5, 0, 100, colorEnergy), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 1, 3, formatPercent(v10), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(v10, 0, 100, colorEnergy), width = cellWidth, height = cellHeight)
+
+// %Y Axis Composite of 1x, 3x, 5x and 10x
+table.cell(tblMatrix, 4, 4, formatPercent(y1), text_size = 15, text_color = colorText, bgcolor = getColor(y1, opacity), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 3, 4, formatPercent(y3), text_size = 15, text_color = colorText, bgcolor = getColor(y3, opacity), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 2, 4, formatPercent(y5), text_size = 15, text_color = colorText, bgcolor = getColor(y5, opacity), width = cellWidth, height = cellHeight)
+table.cell(tblMatrix, 1, 4, formatPercent(y10), text_size = 15, text_color = colorText, bgcolor = getColor(y10, opacity), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 4, 4, str.format("{0, number, #}%", y1), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(y1, 0, 100, colorHigh), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 3, 4, str.format("{0, number, #}%", y3), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(y3, 0, 100, colorHigh), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 2, 4, str.format("{0, number, #}%", y5), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(y5, 0, 100, colorHigh), width = cellWidth, height = cellHeight)
+//table.cell(tblMatrix, 1, 4, str.format("{0, number, #}%", y10), text_size = 15, text_color = colorText, bgcolor = getIntensityColor(y10, 0, 100, colorHigh), width = cellWidth, height = cellHeight)
+
+// TDF Rating value
+table.cell(tblMatrix, 5, 4, formatPercent(tdfRating), text_size = 15, text_color = colorText, bgcolor = getColor(tdfRating, opacity), width = cellWidth, height = cellHeight)
+
+// === JSON Export Block ===
+// The following block assembles a compact JSON string representing the computed matrix and TDF Rating.
+// The JSON is emitted with log.info(json) on the last bar (viewable in the Pine console).
+json = "{ "
+json := json + "\"Symbol\": \"" + syminfo.ticker + "\", "
+json := json + "\"Timeframe\": \"" + timeframe.period + "\", "
+json := json + "\"matrix\": { "
+json := json + "\"%$\": { \"10X\": \"" + str.tostring(p10, "#.##") + "%\", \"5X\": \"" + str.tostring(p5, "#.##") + "%\", \"3X\": \"" + str.tostring(p3, "#.##") + "%\", \"1X\": \"" + str.tostring(p1, "#.##") + "%\", \"%X\": \"" + str.tostring(px, "#.##") + "%\" }, "
+json := json + "\"%B\": { \"10X\": \"" + str.tostring(b10, "#.##") + "%\", \"5X\": \"" + str.tostring(b5, "#.##") + "%\", \"3X\": \"" + str.tostring(b3, "#.##") + "%\", \"1X\": \"" + str.tostring(b1, "#.##") + "%\", \"%X\": \"" + str.tostring(bx, "#.##") + "%\" }, "
+json := json + "\"%V\": { \"10X\": \"" + str.tostring(v10, "#.##") + "%\", \"5X\": \"" + str.tostring(v5, "#.##") + "%\", \"3X\": \"" + str.tostring(v3, "#.##") + "%\", \"1X\": \"" + str.tostring(v1, "#.##") + "%\", \"%X\": \"" + str.tostring(vx, "#.##") + "%\" }, "
+json := json + "\"%Y\": { \"10X\": \"" + str.tostring(y10, "#.##") + "%\", \"5X\": \"" + str.tostring(y5, "#.##") + "%\", \"3X\": \"" + str.tostring(y3, "#.##") + "%\", \"1X\": \"" + str.tostring(y1, "#.##") + "%\" }, "
+json := json + "\"TDF Rating\": \"" + str.tostring(tdfRating, "#.##") + "%\" "
+json := json + "} }"
+
+if barstate.islast
+    table.cell(tblMatrix, 0, 1, "%$", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+    table.cell(tblMatrix, 0, 2, "%B", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+    table.cell(tblMatrix, 0, 3, "%V", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)   
+    table.cell(tblMatrix, 0, 4, "%Y", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15) 
+    table.cell(tblMatrix, 5, 0, "%X", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)   
+    table.cell(tblMatrix, 4, 0, "1X", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+    table.cell(tblMatrix, 3, 0, "3X", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+    table.cell(tblMatrix, 2, 0, "5X", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+    table.cell(tblMatrix, 1, 0, "10X", text_color = colorText, width = cellWidth, bgcolor = colorHeading, text_size = 15)
+
+    // Output JSON data structure to log output
+    log.info(json)
+    table.merge_cells(tblMatrix, 0, 5, 5, 5)
+    table.cell(tblMatrix, 0, 5, tdfLib.getStateDescription(tdfState), text_color=colorText, text_size=13)

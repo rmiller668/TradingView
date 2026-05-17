@@ -1,0 +1,549 @@
+//@version=6
+indicator("RAF Matrix", overlay=false, max_labels_count=500)
+
+//----------------------------------------
+// Inputs
+//----------------------------------------
+string TF_GRP = "Horizons"
+string TABLE_GRP = "Table"
+string COLOR_GRP = "Color"
+
+//==================================================
+// PERFORMANCE (Rate of Return)
+//==================================================
+string TT_ROR_BASIS = "Average reward for holding risk over the base period, reflecting the market’s current compensation for exposure."
+string TT_ROR_1X    = "Average one-base-period reward for holding risk, observed across the recent horizon."
+string TT_ROR_3X    = "Average one-base-period reward for holding risk, observed across a multi-year horizon."
+string TT_ROR_5X    = "Average one-base-period reward for holding risk, observed across a full cycle horizon."
+string TT_ROR_10X   = "Average one-base-period reward for holding risk, observed across a long-term structural horizon."
+
+//==================================================
+// PARTICIPATION
+//==================================================
+string TT_PART_BASIS = "Current willingness of the market to accept and hold risk at this moment."
+string TT_PART_1X    = "Persistence of risk acceptance across the recent horizon, showing whether participation is sustained or fleeting."
+string TT_PART_3X    = "Structural consistency of risk acceptance across multiple years."
+string TT_PART_5X    = "Cycle-level participation, indicating whether risk has been broadly embraced or selectively tolerated."
+string TT_PART_10X   = "Long-term participation posture, reflecting how consistently risk has been accepted over time."
+
+//==================================================
+// ENERGY
+//==================================================
+string TT_ENERGY_BASIS = "Current effort required to hold risk, reflecting how demanding the environment is right now."
+string TT_ENERGY_1X    = "Persistence of holding effort across the recent horizon, showing whether stress is temporary or ongoing."
+string TT_ENERGY_3X    = "Structural effort required to hold risk across multiple years."
+string TT_ENERGY_5X    = "Cycle-level effort required to remain exposed, indicating whether risk has been easy or demanding to hold."
+string TT_ENERGY_10X   = "Long-term structural burden of holding risk across extended horizons."
+
+//==================================================
+// SENSITIVITY
+//==================================================
+string TT_SENS_BASIS = "Current sensitivity of prices to disappointment, reflecting how fragile ownership is at this moment."
+string TT_SENS_1X    = "Persistence of price sensitivity across the recent horizon, showing how forgiving or fragile pricing has been."
+string TT_SENS_3X    = "Structural sensitivity to disappointment across multiple years."
+string TT_SENS_5X    = "Cycle-level pricing sensitivity, indicating how tolerant ownership has been over time."
+string TT_SENS_10X   = "Long-term structural fragility of pricing, reflecting how sensitive markets have historically been to disappointment."
+
+//==================================================
+// RoR Ratios
+//==================================================
+TT_RATIO_BASIS = "Compares current RoR to the 1x horizon to show whether recent performance is being confirmed or breaking down now."
+TT_RATIO_1X    = "Compares 1x RoR to the 3x horizon to indicate whether recent performance is strengthening or weakening relative to the cycle."
+TT_RATIO_3X    = "Compares 3x RoR to the 5x horizon to show whether cycle-level performance is improving or decaying versus longer-term structure."
+TT_RATIO_5X    = "Compares 5x RoR to the 10x horizon to indicate whether medium-term returns are sustaining the asset’s long-term reward profile."
+TT_RATIO_10X   = "Long-term reference horizon used as the structural baseline for RoR comparisons."
+
+//==================================================
+// Price Levels 
+//==================================================
+TT_PRICELEVEL_BASIS = "Shows the current price level at the basis horizon, representing the most immediate structural reference for where price is positioned."
+TT_PRICELEVEL_1X    = "Shows the smoothed price level at the 1x horizon to provide short-term structural context for where price is positioned relative to recent history."
+TT_PRICELEVEL_3X    = "Shows the smoothed price level at the 3x horizon to indicate the intermediate structural price position within the broader cycle."
+TT_PRICELEVEL_5X    = "Shows the smoothed price level at the 5x horizon to reflect medium-term structural price positioning."
+TT_PRICELEVEL_10X   = "Shows the smoothed price level at the 10x horizon, representing the long-term structural price position across the full cycle."
+
+//==================================================
+// Realized Price Returns 
+//==================================================
+TT_PRICERETURN_BASIS = "Measures the realized price return from the current bar back to the basis horizon, showing the most recent price movement actually achieved."
+TT_PRICERETURN_1X    = "Measures the realized price return from the current bar back to the 1x horizon to show how much price has advanced or declined over the short-term cycle."
+TT_PRICERETURN_3X    = "Measures the realized price return from the current bar back to the 3x horizon to indicate how much price movement has occurred at the intermediate cycle level."
+TT_PRICERETURN_5X    = "Measures the realized price return from the current bar back to the 5x horizon to show the extent of price progress or decay across the medium-term structure."
+TT_PRICERETURN_10X   = "Measures the realized price return from the current bar back to the 10x horizon, representing the total price movement across the long-term cycle."
+
+
+
+int basePeriod = input.int(12, "Base period", minval=1, group=TF_GRP, tooltip="On a monthly chart, 12 periods ≈ 1 year. Horizons are 10Y=12*10, 5Y=12*5, 3Y=12*3, 1Y=12*1.")
+
+string tableX = input.string("center", "Table X", options=["left","center","right"], group=TABLE_GRP)
+string tableY = input.string("middle", "Table Y", options=["top","middle","bottom"], group=TABLE_GRP)
+int tableW = input.int(100, "Table W", minval=10, maxval=100, group=TABLE_GRP, tooltip = "Width of table in percentage")
+int tableH = input.int(100, "Table H", minval=10, maxval=100, group=TABLE_GRP, tooltip = "Height of table in percentage")
+color colorLow = input.color(color.rgb(242, 54, 69), "Low Performance", group=COLOR_GRP)
+color colorHigh = input.color(color.rgb(16, 172, 175), "High Performance", group=COLOR_GRP)
+color colorContinuity = input.color(color.rgb(120, 110, 160), "RoR Continuity", group=COLOR_GRP)
+color colorParticipation = input.color(color.rgb(180, 80, 60), "Participation", group=COLOR_GRP)
+color colorEnergy = input.color(color.rgb(180, 140, 60), "Breadth", group=COLOR_GRP)
+color colorPosition = input.color(color.rgb(75, 115, 195), "Position", group=COLOR_GRP)
+color colorHeading = input.color(color.new(color.gray, 80), "Headings", group=COLOR_GRP)
+color colorText = input.color(color.white, "Text", group=COLOR_GRP)
+
+//----------------------------------------
+// Horizon lengths (in monthly bars)
+//----------------------------------------
+int lens1x  = basePeriod * 1
+int lens3x  = basePeriod * 3
+int lens5x  = basePeriod * 5
+int lens10x = basePeriod * 10 
+
+cellWidth = tableW / 6
+cellHeight = tableH / 10
+
+//----------------------------------------
+// Helpers
+//----------------------------------------
+posFromInputs() =>
+    // table.position.* constants can't be built dynamically, so use switch.
+    switch str.format("{0}_{1}", tableY, tableX)
+        "top_left"      => position.top_left
+        "top_center"    => position.top_center
+        "top_right"     => position.top_right
+        "middle_left"   => position.middle_left
+        "middle_center" => position.middle_center
+        "middle_right"  => position.middle_right
+        "bottom_left"   => position.bottom_left
+        "bottom_center" => position.bottom_center
+        "bottom_right"  => position.bottom_right
+        => position.middle_center
+
+safeRatio(num, den) =>
+    na(den) or den == 0 ? na : num / den
+
+fmtPercent(x) =>
+    na(x) ? "—" : str.format("{0,number,#0.0}%", x)
+
+fmtPrice(x) =>
+    na(x) ? "—" : str.format("{0,number,currency}", x)
+
+fmtRatio(x) =>
+    na(x) ? "—" : str.format("{0,number,#0.0}", x)
+
+fmtDensity(x) =>
+    na(x) ? "—" : str.format("{0,number,#0.00}", x)
+
+getDensityToolTip(x) =>
+    str.format("For each dollar of price risk, this shows a return density of {0,number,#0.0} points.  Higher values indicate better efficiency.", x)
+
+getGradientColor(float value, float min, float max, int opacity) =>
+    color.new(color.from_gradient(value, min, max, colorLow, colorHigh), opacity)
+
+getIntensityColor(float value, float min, float max, color baseColor) =>
+    // Calm reference
+    float calmLevel = min
+    float maxEnergy = max
+
+    // Only count energy ABOVE calm
+    float distance = math.max(value - calmLevel, 0)
+
+    // Normalize to 0–1
+    float norm = distance / (maxEnergy - calmLevel)
+    norm := math.min(norm, 1)
+
+    // Map to transparency (lower = stronger)
+    int intensity = 90 - int(norm * 70)
+    color.new(baseColor, intensity)
+
+getBBPercentB(int basisLength) =>
+    float basis = ta.sma(close, basisLength)
+    float dev   = ta.stdev(close, basisLength)
+    float upper = basis + 2.0 * dev
+    float lower = basis - 2.0 * dev
+    (close - lower) / (upper - lower) * 100
+
+// Returns SMA of current Rate of Return
+getAverageRoR(basisLength, smaLength) =>
+    basePrice = close[basisLength]
+    ror = na(basePrice) ? na : (close - basePrice) / basePrice * 100
+    ta.sma(ror, smaLength)
+
+getPriceReturn(int lens) =>
+    na(close[lens]) ? na : (close - close[lens]) / close[lens] * 100
+
+getAverageStoch(basisLength, smaLength) =>
+    ta.sma(ta.stoch(close, high, low, basisLength), smaLength)
+
+getAverageEnergy(basisLength, smaLength) =>
+    energy = (ta.atr(basisLength) / close) * 100
+    ta.sma(energy, smaLength)
+
+getAveragePosition(basisLength, smaLength) =>
+    ta.sma(getBBPercentB(basisLength), smaLength)
+
+getRiskRating(
+    float ror1x, float ror3x, float ror5x,
+    float part1x, float part3x, float part5x
+) =>
+    w1 = 1.0
+    w3 = 3.0
+    w5 = 5.0
+    wSum = w1 + w3 + w5
+
+    rorWeighted = (ror1x * w1 + ror3x * w3 + ror5x * w5) / wSum
+    rorClamped = math.max(math.min(rorWeighted, 20.0), -20.0)
+    rorScore = (rorClamped + 20.0) / 40.0 * 100.0
+    partScore = (part1x * w1 + part3x * w3 + part5x * w5) / wSum
+
+    (rorScore + partScore) / 2.0
+getRiskState(
+    // ── BASIS truth
+    float riskEffBase,
+    float priceReturnBase,
+    float partBase,
+    float energyBase,
+    float posBase,
+
+    // ── Regime confirmations
+    float riskEff1x, float riskEff3x, float riskEff5x,
+    float priceReturn1x, float priceReturn3x,
+    float part1x, float part3x, float part5x
+) =>
+
+    // ── Risk Intensity (imbalance across regimes)
+    float riskIntensity = getRiskRating(
+        riskEff1x, riskEff3x, riskEff5x,
+        part1x, part3x, part5x
+    )
+
+    // ── Core truths
+    bool priceAdvancing    = priceReturnBase > 0
+    bool riskAccepted      = riskEff1x > 0
+    bool riskConfirmed     = riskEff1x > 0 and riskEff3x > 0 and riskEff5x > 0
+    bool priceLeadingRisk  = priceAdvancing and riskEff1x <= 0
+
+    // ── Structural conditions
+    bool participationHigh = partBase >= 60
+    bool energyCalm        = energyBase <= 20
+    bool positionNeutral   = posBase >= 40 and posBase <= 70
+
+    // ── Risk State (alignment-driven)
+    string riskState = "RISK REALIGNING"
+
+    if priceLeadingRisk and not participationHigh
+        riskState := "VOLATILITY-LED MOVE"
+    else if not priceAdvancing and not riskAccepted
+        riskState := "RISK REJECTED"
+    else if priceAdvancing and not riskAccepted
+        riskState := "RISK UNACCEPTED"
+    else if priceAdvancing and riskAccepted and not riskConfirmed
+        riskState := "RISK STABILIZING"
+    else if priceAdvancing and riskConfirmed and participationHigh and energyCalm
+        riskState := "RISK EXPANDING"
+    else if riskConfirmed and participationHigh and energyCalm and partBase >= 80
+        riskState := "RISK CROWDED"
+
+    // ── Risk Intensity Meaning
+    string intensityMeaning =
+         riskIntensity < 15 ? "risk expression is minimal and participation is scarce" :
+         riskIntensity < 35 ? "risk acceptance is emerging but remains limited" :
+         riskIntensity < 55 ? "risk is increasingly accepted across horizons" :
+         riskIntensity < 70 ? "risk acceptance is broad and conditions are mature" :
+         riskIntensity < 85 ? "risk participation is elevated and becoming fragile" :
+                              "risk is crowded with rising imbalance and sensitivity"
+
+    string cellText = str.format(
+        "{0} – {1,number,#0}% intensity indicates {2}.",
+        riskState, riskIntensity, intensityMeaning
+    )
+
+    string tooltipText =
+         riskState == "RISK REJECTED" ?
+             "Capital has withdrawn and risk is neither rewarded nor accepted." :
+         riskState == "VOLATILITY-LED MOVE" ?
+             "Price has advanced without risk acceptance, indicating an expensive, volatility-driven move." :
+         riskState == "RISK UNACCEPTED" ?
+             "Price movement is present, but risk efficiency remains negative and sponsorship is lacking." :
+         riskState == "RISK STABILIZING" ?
+             "Risk efficiency has turned positive, but confirmation across regimes is still forming." :
+         riskState == "RISK EXPANDING" ?
+             "Risk is rewarded, accepted, and confirmed across regimes, supporting durable participation." :
+         riskState == "RISK CROWDED" ?
+             "Risk acceptance is elevated in calm conditions, increasing sensitivity to disappointment." :
+             "Risk conditions are adjusting as price and efficiency realign."
+
+    [cellText, tooltipText]
+
+getRiskState1(
+    // BASIS (truth)
+    float rorBase,
+    float partBase,
+    float energyBase,
+    float posBase,
+
+    // Regime confirmations
+    float ror1x, float ror3x, float ror5x,
+    float part1x, float part3x, float part5x
+) =>
+
+    // ---- Risk Intensity (Imbalance across regimes) ----
+    float riskIntensity = getRiskRating(
+        ror1x, ror3x, ror5x,
+        part1x, part3x, part5x
+    )
+
+    // ---- BASIS truth flags ----
+    bool rewardPresent     = rorBase > 0
+    bool participationHigh = partBase >= 60
+    bool energyCalm        = energyBase <= 20
+    bool positionNeutral   = posBase >= 40 and posBase <= 70
+
+    // ---- Regime confirmation flags ----
+    bool rewardConfirmed        = ror1x > 0 and ror3x > 0 and ror5x > 0
+    bool rewardWeakening        = rorBase < ror3x or ror1x < ror3x
+    bool participationConfirmed = part1x >= 60 and part3x >= 60 and part5x >= 60
+    bool participationElevated  = partBase > part3x and part3x >= part5x
+
+    // ---- Risk State (BASIS-first, regimes confirm/contradict) ----
+    string riskState = "RISK REALIGNING"
+
+    if not rewardPresent and not participationHigh
+        riskState := "RISK REJECTED"
+    else if not rewardPresent and participationHigh
+        riskState := "RISK STABILIZING"
+    else if rewardPresent and participationHigh and energyCalm and partBase >= 80
+        riskState := "RISK CROWDED"
+    else if rewardPresent and participationHigh and rewardConfirmed and not rewardWeakening
+        riskState := "RISK EXPANDING"
+    else if rewardPresent and participationHigh and rewardWeakening
+        riskState := "RISK IN TRANSITION"
+
+    // ---- Risk Intensity Meaning ----
+    string intensityMeaning =
+         riskIntensity < 15 ? "risk expression is minimal and participation is scarce" :
+         riskIntensity < 35 ? "risk acceptance is emerging but remains limited" :
+         riskIntensity < 55 ? "risk is increasingly accepted across horizons" :
+         riskIntensity < 70 ? "risk acceptance is broad and conditions are mature" :
+         riskIntensity < 85 ? "risk participation is elevated and becoming fragile" :
+                              "risk is crowded with rising imbalance and sensitivity"
+
+    string cellText = str.format(
+        "{0} – {1,number,#0}% intensity indicates {2}.",
+        riskState, riskIntensity, intensityMeaning
+    )
+
+    string tooltipText =
+         riskState == "RISK REJECTED" ?
+             "Capital has withdrawn and risk is no longer rewarded or accepted." :
+         riskState == "RISK STABILIZING" ?
+             "Participation persists despite absent reward. Conditions are repairing." :
+         riskState == "RISK EXPANDING" ?
+             "Risk is currently rewarded and broadly accepted, with regimes confirming persistence." :
+         riskState == "RISK IN TRANSITION" ?
+             "Risk remains accepted, but reward persistence is weakening and conditions are becoming fragile." :
+         riskState == "RISK CROWDED" ?
+             "Risk acceptance is elevated in calm conditions, increasing sensitivity to disappointment." :
+             "Risk conditions are adjusting as regimes realign with current truth."
+
+    [cellText, tooltipText]
+
+//----------------------------------------
+// Compute metrics on the analysis timeframe (monthly)
+// - Performance: % change from close now vs close N bars ago
+// - Participation: Stochastic %K over N bars (0..100)
+// - Breadth: ATR(N)/Close * 100  (volatility-derived breadth proxy)
+//----------------------------------------
+
+// ── Rate of Return (%)
+rorBase = na(close[basePeriod]) ? na : (close - close[basePeriod]) / close[basePeriod] * 100
+ror1x = getAverageRoR(basePeriod, lens1x)
+ror3x = getAverageRoR(basePeriod, lens3x)
+ror5x = getAverageRoR(basePeriod, lens5x)
+ror10x = getAverageRoR(basePeriod, lens10x)
+
+// ── RoR Ratios
+ratio5x   = safeRatio(ror5x, ror10x)
+ratio3x   = safeRatio(ror3x, ror5x)
+ratio1x   = safeRatio(ror1x, ror3x)
+ratioBase = safeRatio(rorBase, ror1x)
+
+// ── Participation (Stochastic %K)
+stochBase = ta.stoch(close, high, low, basePeriod)
+stoch1x = getAverageStoch(basePeriod, lens1x)
+stoch3x = getAverageStoch(basePeriod, lens3x)
+stoch5x = getAverageStoch(basePeriod, lens5x)
+stoch10x = getAverageStoch(basePeriod, lens10x)
+
+// ── Energy (ATR / Close %)
+energyBase = (ta.atr(basePeriod) / close) * 100
+energy1x = getAverageEnergy(basePeriod, lens1x),
+energy3x = getAverageEnergy(basePeriod, lens3x),
+energy5x = getAverageEnergy(basePeriod, lens5x),
+energy10x = getAverageEnergy(basePeriod, lens10x),
+
+// ── Position (%B)
+posBase = getBBPercentB(basePeriod)
+pos1x = getAveragePosition(basePeriod, lens1x),
+pos3x = getAveragePosition(basePeriod, lens3x),
+pos5x = getAveragePosition(basePeriod, lens5x),
+pos10x = getAveragePosition(basePeriod, lens10x)
+
+priceBase = close
+price1x = ta.sma(priceBase, lens1x)
+price3x = ta.sma(priceBase, lens3x)
+price5x = ta.sma(priceBase, lens5x)
+price10x = ta.sma(priceBase, lens10x)
+
+// ── RoR / Price (Density per dollar) per horizon
+riskDensity10x  = safeRatio(ror10x,  price10x)
+riskDensity5x   = safeRatio(ror5x,   price5x)
+riskDensity3x   = safeRatio(ror3x,   price3x)
+riskDensity1x   = safeRatio(ror1x,   price1x)
+riskDensityBase = safeRatio(rorBase, priceBase)
+
+// ── Price Return (%)
+priceReturnBase = getPriceReturn(basePeriod)
+priceReturn1x   = getPriceReturn(lens1x)
+priceReturn3x   = getPriceReturn(lens3x)
+priceReturn5x   = getPriceReturn(lens5x)
+priceReturn10x  = getPriceReturn(lens10x)
+
+[cycleText, cycleTooltip] = getRiskState(rorBase, priceReturnBase, stochBase, energyBase, posBase, ror1x, ror3x, ror5x, priceReturn1x, priceReturn3x, stoch1x, stoch3x, stoch5x)
+
+//----------------------------------------
+// Table: x-axis horizons (10Y→1Y), y-axis metrics
+//----------------------------------------
+var table t = table.new(posFromInputs(), 6, 10, border_width=1)
+
+if barstate.islast
+    // Header row
+    //table.cell(t, 0, 0, "", bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+    table.cell(t, 1, 0, "10X",   bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+    table.cell(t, 2, 0, "5X",    bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+    table.cell(t, 3, 0, "3X",    bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+    table.cell(t, 4, 0, "1X",    bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+    table.cell(t, 5, 0, "BASIS",    bgcolor=colorHeading, text_color=colorText, text_size=size.normal, width=cellWidth, height=cellHeight)
+
+    // Row labels
+    table.cell(
+        t, 0, 0, "",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="For a move to be healthy, risk efficiency must lead price or at least improve alongside it.If price leads while risk efficiency lags, the move is volatility-driven and therefore expensive."
+    )
+
+    table.cell(
+        t, 0, 1, "Risk Efficiency",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Is risk being rewarded or penalized over this horizon? This reflects whether capital has been compensated for carrying uncertainty, not business value."
+    )
+    
+    table.cell(
+        t, 0, 2, "Price Return",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Price Return shows the realized percentage change in price between the current bar and each horizon anchor. It reflects how far price has actually moved over each timeframe, independent of risk efficiency or volatility."
+    )    
+    
+    table.cell(
+        t, 0, 3, "Risk Density",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Describes how much return is packed into each dollar of accepted price risk. Higher values indicate more productive risk; lower values indicate more expensive or crowded risk."
+    )
+
+    table.cell(
+        t, 0, 4, "Continuity",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Shows whether rate of return is being sustained, improving, or breaking down as it transitions across time horizons."
+    )  
+
+    table.cell(
+        t, 0, 5, "Price Level",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Price Level shows the smoothed price value at each horizon, providing structural context for where price is positioned over time. This row reflects price state, not price movement or return."
+    )
+
+    table.cell(
+        t, 0, 6, "Participation",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Is risk being accepted or merely tolerated at this horizon? Higher values indicate broader willingness to hold exposure, while lower values reflect reluctance or withdrawal."
+    )
+
+    table.cell(
+        t, 0, 7, "Energy",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="How demanding is the risk environment? Lower values indicate calmer conditions that are easier to hold, while higher values reflect expanding uncertainty and increased difficulty."
+    )
+
+    table.cell(
+        t, 0, 8, "Sensitivity",
+        bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight,
+        tooltip="Sensitivity measures how strongly prices react when outcomes fall short of expectations — higher values indicate greater fragility; lower values indicate more forgiving conditions, even though risk may still be present."
+    )
+
+    // ── Rate of Return (Risk efficiency)
+    table.cell(t, 1, 1, fmtPercent(ror10x), bgcolor=getGradientColor(ror10x, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ROR_10X)
+    table.cell(t, 2, 1, fmtPercent(ror5x),  bgcolor=getGradientColor(ror5x,  -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ROR_5X)
+    table.cell(t, 3, 1, fmtPercent(ror3x),  bgcolor=getGradientColor(ror3x,  -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ROR_3X)
+    table.cell(t, 4, 1, fmtPercent(ror1x),  bgcolor=getGradientColor(ror1x,  -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ROR_1X)
+    table.cell(t, 5, 1, fmtPercent(rorBase),  bgcolor=getGradientColor(rorBase,  -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ROR_BASIS)
+
+   // ── Realized Price Return
+    table.cell(t, 1, 2, fmtPercent(priceReturn10x), bgcolor=getGradientColor(priceReturn10x, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICERETURN_10X)
+    table.cell(t, 2, 2, fmtPercent(priceReturn5x),  bgcolor=getGradientColor(priceReturn5x, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICERETURN_5X)
+    table.cell(t, 3, 2, fmtPercent(priceReturn3x),  bgcolor=getGradientColor(priceReturn3x, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICERETURN_3X)
+    table.cell(t, 4, 2, fmtPercent(priceReturn1x),  bgcolor=getGradientColor(priceReturn1x, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICERETURN_1X)
+    table.cell(t, 5, 2, fmtPercent(priceReturnBase),  bgcolor=getGradientColor(priceReturnBase, -50, 50, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICERETURN_BASIS)
+
+    // ── Risk Density row
+    table.cell(t, 1, 3, fmtDensity(riskDensity10x), bgcolor=getGradientColor(riskDensity10x, -2, 2, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=getDensityToolTip(riskDensity10x))
+    table.cell(t, 2, 3, fmtDensity(riskDensity5x),  bgcolor=getGradientColor(riskDensity5x, -2, 2, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=getDensityToolTip(riskDensity5x))
+    table.cell(t, 3, 3, fmtDensity(riskDensity3x),  bgcolor=getGradientColor(riskDensity3x, -2, 2, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=getDensityToolTip(riskDensity3x))
+    table.cell(t, 4, 3, fmtDensity(riskDensity1x),  bgcolor=getGradientColor(riskDensity1x, -2, 2, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=getDensityToolTip(riskDensity1x))
+    table.cell(t, 5, 3, fmtDensity(riskDensityBase),  bgcolor=getGradientColor(riskDensityBase, -2, 2, 50), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=getDensityToolTip(riskDensityBase))
+
+    // ── RoR Continuity row
+    table.cell(t, 1, 4, "—", bgcolor=getIntensityColor(-1, -1, 2, colorContinuity), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_RATIO_10X)
+    table.cell(t, 2, 4, fmtRatio(ratio5x), bgcolor=getIntensityColor(ratio5x, -1, 2, colorContinuity), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_RATIO_5X)
+    table.cell(t, 3, 4, fmtRatio(ratio3x), bgcolor=getIntensityColor(ratio3x, -1, 2, colorContinuity), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_RATIO_3X)
+    table.cell(t, 4, 4, fmtRatio(ratio1x), bgcolor=getIntensityColor(ratio1x, -1, 2, colorContinuity), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_RATIO_1X)
+    table.cell(t, 5, 4, fmtRatio(ratioBase), bgcolor=getIntensityColor(ratioBase, -1, 2, colorContinuity), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_RATIO_BASIS)    
+
+    // ── Price Level
+    table.cell(t, 1, 5, fmtPrice(price10x), bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICELEVEL_10X)
+    table.cell(t, 2, 5, fmtPrice(price5x),  bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICELEVEL_5X)
+    table.cell(t, 3, 5, fmtPrice(price3x),  bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICELEVEL_3X)
+    table.cell(t, 4, 5, fmtPrice(price1x),  bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICELEVEL_1X)
+    table.cell(t, 5, 5, fmtPrice(priceBase),  bgcolor=colorHeading, text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PRICELEVEL_BASIS)
+
+    // ── Participation row
+    table.cell(t, 1, 6, fmtPercent(stoch10x), bgcolor=getIntensityColor(stoch10x, 0, 100, colorParticipation), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PART_10X)
+    table.cell(t, 2, 6, fmtPercent(stoch5x),  bgcolor=getIntensityColor(stoch5x, 0, 100, colorParticipation), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PART_5X)
+    table.cell(t, 3, 6, fmtPercent(stoch3x),  bgcolor=getIntensityColor(stoch3x, 0, 100, colorParticipation), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PART_3X)
+    table.cell(t, 4, 6, fmtPercent(stoch1x),  bgcolor=getIntensityColor(stoch1x, 0, 100, colorParticipation), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PART_1X)
+    table.cell(t, 5, 6, fmtPercent(stochBase),  bgcolor=getIntensityColor(stochBase, 0, 100, colorParticipation), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_PART_BASIS)
+
+    // ── Breadth row
+    table.cell(t, 1, 7, fmtPercent(energy10x), bgcolor=getIntensityColor(energy10x, 5, 20, colorEnergy), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ENERGY_10X)
+    table.cell(t, 2, 7, fmtPercent(energy5x),  bgcolor=getIntensityColor(energy5x, 5, 20, colorEnergy), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ENERGY_5X)
+    table.cell(t, 3, 7, fmtPercent(energy3x),  bgcolor=getIntensityColor(energy3x, 5, 20, colorEnergy), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ENERGY_3X)
+    table.cell(t, 4, 7, fmtPercent(energy1x),  bgcolor=getIntensityColor(energy1x, 5, 20, colorEnergy), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ENERGY_1X)
+    table.cell(t, 5, 7, fmtPercent(energyBase),  bgcolor=getIntensityColor(energyBase, 5, 20, colorEnergy), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_ENERGY_BASIS)
+
+    // ── %B (Position) row
+    table.cell(t, 1, 8, fmtPercent(pos10x), bgcolor=getIntensityColor(pos10x, 0, 100, colorPosition), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_SENS_10X)
+    table.cell(t, 2, 8, fmtPercent(pos5x),  bgcolor=getIntensityColor(pos5x, 0, 100, colorPosition), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_SENS_5X)
+    table.cell(t, 3, 8, fmtPercent(pos3x),  bgcolor=getIntensityColor(pos3x, 0, 100, colorPosition), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_SENS_3X)
+    table.cell(t, 4, 8, fmtPercent(pos1x),  bgcolor=getIntensityColor(pos1x, 0, 100, colorPosition), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_SENS_1X)
+    table.cell(t, 5, 8, fmtPercent(posBase),  bgcolor=getIntensityColor(posBase, 0, 100, colorPosition), text_color=colorText, width=cellWidth, height=cellHeight, tooltip=TT_SENS_BASIS)
+
+    // ── Cycle State (merged row across all horizons)
+    table.cell(
+        t, 1, 9,
+        cycleText,
+        bgcolor=color.new(color.black, 85),
+        text_color=colorText,
+        width=cellWidth,
+        height=cellHeight,
+        text_halign=text.align_center,
+        tooltip=cycleTooltip
+    )
+
+    table.merge_cells(t, 1, 9, 5, 9)
+
