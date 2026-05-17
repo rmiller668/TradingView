@@ -122,3 +122,39 @@ Reading the RAF Matrix out of order converts it into an indicator dashboard. Rea
 - **Transition** = divergence appearing before price change; calls for awareness, not urgency
 
 The RAF Matrix does not produce decisions. It produces clarity. When conditions are demanding, crowded, or unstable, the correct response is often restraint — not refinement or aggression.
+
+---
+
+## Market Cycles as Risk Tolerance
+
+Cycles are not business phases — they are expressions of changing risk tolerance. A business can remain fundamentally sound while its risk becomes more expensive to hold, and vice versa.
+
+| Cycle Phase | Risk Reality |
+|---|---|
+| **Accumulation / Early** | Risk tolerance is low. Few participants willing to hold uncertainty. Risk is cheap for those who do. |
+| **Expansion / Acceleration** | More participants accept uncertainty. Exposure increases, prices rise. Risk is being rewarded and increasingly shared. |
+| **Saturation / Late** | Participation is crowded. Expectations are high. Risk tolerance feels strong but flexibility has declined. Risk is expensive — ownership is demanding and sensitive to disappointment. |
+| **Contraction / Rejection** | Tolerance declines. Participants reduce exposure. Risk is rejected at current prices and must reprice lower until willing holders are found. |
+
+**Key principle:** Cycles are not about what businesses are doing. They are about what participants are willing to endure. Price can fall in a strong business when risk tolerance contracts. Price can rise in a stagnant business when risk tolerance expands. These are not contradictions — they are the natural result of risk being priced independently of long-term value.
+
+---
+
+## Common Market Language — Risk Translation
+
+Standard market language is framed as value judgment. Risk-based language is descriptive and non-predictive. Use the risk translation when writing commentary or interpreting indicator states.
+
+| Common Phrase | Risk Translation |
+|---|---|
+| "Bullish" | Risk tolerance is expanding |
+| "Bearish" | Risk tolerance is contracting |
+| "Overvalued" | The cost of holding risk is elevated — ownership terms are demanding |
+| "Undervalued" | The cost of holding risk is relatively low — ownership terms are forgiving |
+| "Strong demand" | High willingness to carry risk |
+| "Weak demand" | Low willingness to carry risk |
+| "Breakout" | Risk is being repriced higher — reflects urgency, not acceptance |
+| "Sell-off" | Risk is being rejected at current prices — reflects changing tolerance, not judgment |
+| "Momentum" | Direction and speed of repricing — does not imply acceptance or durability |
+| "Conviction" | Narrative-based confidence — does not describe risk conditions |
+
+**When reading market commentary:** translate value-based language into risk-based language before acting on it. "This stock is strong" → ask what it implies about risk tolerance and crowding. "The market looks expensive" → ask what it says about the difficulty of holding exposure. Headlines stop sounding like verdicts when read through a risk lens.
