@@ -304,23 +304,98 @@ Once markets are recognized as risk systems, a practical question naturally foll
 
 RAF is not a valuation model, a forecasting tool, or a trading system. It does not attempt to estimate fair value or anticipate future outcomes. Its role is more specific and more practical: **to help participants evaluate the conditions under which they are currently holding risk**. RAF provides a disciplined way to observe how risk is being treated across the market and how forgiving or demanding ownership has become.
 
-RAF operates by reframing familiar market dimensions in explicit risk terms:
+---
 
-- **Performance** evaluates whether risk has been rewarded for the uncertainty carried.
-- **Participation** evaluates how broadly risk is being accepted and how crowded ownership has become.
-- **Breadth** evaluates how evenly risk is being transferred or where stress is concentrating.
-- **Position** evaluates how forgiving or fragile the risk is if conditions change.
+### The Four RAF Questions
 
-Individually, these dimensions offer partial insight. Together, they form a coherent picture of **risk conditions**—whether exposure is stable or stretched, tolerated or strained, flexible or fragile. RAF does not label markets as good or bad. It reveals how difficult it is to continue holding uncertainty at current levels.
+RAF enforces a strict question order. Each question must be answered before the next becomes relevant. Earlier questions filter environments; later questions refine participation only after risk has passed initial qualification.
 
-This is especially important because most market failures do not come from misunderstanding businesses. They come from misunderstanding **risk asymmetry**—situations where the cost of holding exposure rises faster than the remaining reward justifies. RAF is designed to surface those conditions early, before outcomes force recognition through volatility or loss.
+**1. Is risk being rewarded?**
+This is the first and most important question — the initial gate. It asks whether capital that has been exposed to uncertainty has actually been compensated for doing so. If risk is not being rewarded, participation should be limited or avoided regardless of how attractive other conditions appear. No amount of favorable participation, calm environment, or forgiving price location can override the absence of reward.
 
-Because RAF focuses on present conditions, it deliberately avoids prediction. Prediction assumes control over what comes next. Risk assessment acknowledges uncertainty and responds to what *is*. RAF observes how risk is behaving now—how it is being rewarded, how it is being shared, and how sensitive it has become to disappointment. Decisions made from that perspective are grounded in reality rather than expectation.
+**2. Is risk being accepted?**
+If risk is being rewarded, the next question is whether that reward is supported by genuine acceptance or merely temporary tolerance. Acceptance is not excitement. Excitement reflects urgency and attention; acceptance reflects willingness and durability. This question evaluates how broadly risk is being carried and whether participation is healthy or crowded.
+
+**3. How demanding is the risk?**
+Once risk is rewarded and accepted, the operating environment must be assessed. This question evaluates how difficult it is to remain exposed — whether uncertainty is calm or unstable, and whether holding risk requires constant adjustment. High energy does not imply opportunity. It implies that mistakes will be punished faster and that the cost of staying involved is rising.
+
+**4. How forgiving are the ownership terms?**
+Only after the first three questions are answered does position matter. This question evaluates how sensitive exposure is to disappointment and how much flexibility exists if conditions change. A forgiving position allows participation to persist despite minor disappointment. A demanding position requires continued agreement and leaves little room for error.
+
+This order protects capital by forcing disqualification before optimization. Ignore the order, and the framework collapses into interpretation.
+
+---
+
+### The RAF Matrix — Measuring Risk Across Time
+
+The RAF Matrix is the implementation of these four questions as a structured, multi-horizon view of risk conditions. It is designed for use on a **monthly chart** with a default base period of 12 bars (approximately one year), making it a macro-level, structural tool.
+
+The matrix evaluates risk across five time horizons derived from that base period:
+
+| Column | Horizon | Approximate Duration |
+|--------|---------|----------------------|
+| BASIS  | Current bar | This month |
+| 1X     | 12 bars | 1 year |
+| 3X     | 36 bars | 3 years |
+| 5X     | 60 bars | 5 years |
+| 10X    | 120 bars | 10 years |
+
+Reading right to left — BASIS first, then 1X through 10X — shows current conditions first, then whether those conditions are structurally supported. The right side tells you what is happening now; the left side tells you whether it has been sustained.
+
+Each row of the matrix answers one of the RAF questions using a specific measurement proxy:
+
+**Risk Efficiency** — *Is risk being rewarded?*
+Measures the average percentage return earned per base period across each horizon. Positive means capital has been compensated for carrying uncertainty. Negative means risk has been penalized. This is the first row and the first gate — when Risk Efficiency is negative across multiple horizons, the matrix has already done its job.
+
+**Price Return** — *How far has price actually moved?*
+The raw realized percentage change from the current bar back to each horizon anchor. Read alongside Risk Efficiency: when Price Return is high but Risk Efficiency is low, the move was concentrated and volatility-driven rather than sustained and rewarded. That divergence is one of the most important signals the matrix produces.
+
+**Risk Density** — *How productive is the risk being taken?*
+Risk Efficiency divided by the smoothed price level at each horizon. Higher values mean more return per dollar of risk — productive risk. Lower values mean expensive or crowded risk. This row reveals whether the reward being earned is proportionate to the price being paid to hold it.
+
+**RoR Continuity** — *Is momentum building or fading across horizons?*
+The ratio of Risk Efficiency between adjacent horizons. A ratio above 1 means near-term returns are stronger than longer-term averages — momentum building. A ratio below 1 means near-term returns are weakening relative to structure — momentum fading. Negative ratios indicate a structural breakdown in progress.
+
+**Participation** — *Is risk being accepted?*
+Uses Stochastic %K as a proxy for closing behavior — where participants are willing to carry risk when a period is complete. Persistent readings at or above 60 indicate broad willingness to hold exposure. Readings below 60 reflect reluctance or withdrawal. This row answers whether reward is supported by genuine acceptance or merely temporary tolerance.
+
+**Energy** — *How demanding is the environment?*
+Measures ATR as a percentage of price — the effort required to hold a position. Low values (at or below 20) indicate calm conditions that are easy to hold. High values reflect expanding uncertainty and increasing difficulty. Energy describes how hard the environment is pushing back on participation, not whether participation will be rewarded.
+
+**Sensitivity** — *How forgiving are the ownership terms?*
+Measures Bollinger %B — where price sits within its statistical distribution at each horizon. High values mean price is near the upper band, extended and fragile. Low values mean price is near the lower band, compressed and potentially forgiving. This is the last row and the last question — it refines risk only after the earlier conditions are understood.
+
+---
+
+### Risk States
+
+The matrix synthesizes all rows into a single **Risk State** that describes the current environment:
+
+| State | Meaning |
+|-------|---------|
+| **RISK EXPANDING** | Risk is rewarded, accepted, and confirmed across regimes. Durable participation. Favorable environment. |
+| **RISK STABILIZING** | Participation persists despite absent or recovering reward. Conditions are repairing but not yet confirmed. |
+| **RISK IN TRANSITION** | Risk remains accepted but reward persistence is weakening. Conditions becoming fragile. |
+| **RISK CROWDED** | Risk acceptance is elevated in calm conditions. Sensitivity to disappointment is high. |
+| **RISK UNACCEPTED** | Price is advancing but risk efficiency is negative. The move lacks sponsorship. |
+| **VOLATILITY-LED MOVE** | Price has advanced without risk acceptance — expensive, volatility-driven, fragile. |
+| **RISK REJECTED** | Capital has withdrawn. Risk is neither rewarded nor accepted. Avoid new exposure. |
+| **RISK REALIGNING** | Default state when conditions don't fit a clear pattern. Price and efficiency are adjusting. |
+
+Each state is accompanied by a **Risk Intensity** percentage (0–100%) that reflects the weighted composite of Risk Efficiency and Participation across the 1X, 3X, and 5X horizons. Longer horizons carry more weight. Intensity below 35% indicates emerging or limited conditions; above 70% indicates elevated and potentially fragile conditions.
+
+---
+
+### RAF as a Macro Permission Layer
+
+The RAF Matrix is designed to answer one question before any individual asset is evaluated: *Is the environment worth being in?*
+
+Used on a monthly chart, it operates as a macro permission layer. When the Risk State is RISK EXPANDING — efficiency positive, participation broad, energy calm — there is macro tailwind. When the state is RISK CROWDED or RISK IN TRANSITION, the environment is fragile even if individual setups look clean. When the state is RISK REJECTED, there is no need to look further.
+
+The monthly chart is too slow to be manipulated by short-term noise. What it shows is structural truth about whether risk-taking is currently being compensated across the market.
+
+This is especially important because most market failures do not come from misunderstanding businesses. They come from misunderstanding **risk asymmetry** — situations where the cost of holding exposure rises faster than the remaining reward justifies. The RAF Matrix is designed to surface those conditions early, before outcomes force recognition through volatility or loss.
 
 Used properly, RAF functions as a **risk-governance lens**. It supports decisions about when to increase exposure, when to reduce it, and when patience is the correct choice. It does not eliminate uncertainty, but it prevents participants from being surprised by it. It shifts decision-making away from hope, fear, and narrative, and toward awareness and alignment.
 
-This guide intentionally stops here.
-
-Its purpose has been to establish a clear understanding of markets as risk systems. The **Risk Assessment Framework** builds on that understanding and deserves its own dedicated guide—one focused on application, interpretation, and disciplined use. RAF is not the starting point. It is the next step.
-
-Understanding markets explains *why* risk behaves as it does.  RAF exists to help you decide *how* to participate within that reality.
+Understanding markets explains *why* risk behaves as it does. RAF exists to help you decide *how* to participate within that reality.
