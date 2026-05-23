@@ -1,0 +1,134 @@
+//@version=6
+indicator('Market Watch', overlay = false)
+
+//import RMCapital668/TDFLibrary/9 as TDF 
+import RMCapital668/RAFLibrary/2 as RAF
+import TradingView/ValueAtTime/2 as VAT
+
+colorRoRNegative   = input.color(color.rgb(175, 76, 74), 'RoR Negative Color', tooltip = 'Negative color for RoR.')
+colorRoRPositive   = input.color(color.rgb(74, 173, 175), 'RoR Positive Color', tooltip = 'Positive color for RoR.') 
+colorParticipation = input.color(color.rgb(74, 122, 175), "Participation", tooltip = "Participation intesisty color.")
+colorText = input.color(color.rgb(219, 219, 219), 'Text', tooltip = 'Color for text.')
+colorHeading = input.color(color.new(color.gray, 80), 'Headings', tooltip = 'Color for headings background.')
+opacity = input.int(50, 'Opacity', tooltip = 'Opacity level from 0 to 100 for background color.')
+textSize = input.int(12, 'Text Size')
+
+string watchListInput = input.text_area("SPX, NDX, RUT, XAU, XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLU, XLV, VIX", "Symbol list", tooltip = "A list of symbols or ticker IDs, separated by commas and optional spaces.")
+
+var array<string> watchlist = array.new_string(1, '') 
+
+getTickers()=>
+    symbols = VAT.getArrayFromString(str.upper(watchListInput))
+    symbols
+
+getBaseScope(tf) =>
+    switch tf
+        "3M" => [4, 12, 4]
+        "1M"  => [12, 12, 12]
+        "1W"  => [26, 12, 26]
+        => [12, 12, 12]
+
+watchlist := getTickers()
+var table tblWatch = table.new(position.top_center, (array.size(watchlist) + 1), 7, border_width = 0)
+cellHeight = 95 / 7
+cellWidth = 100 / (array.size(watchlist) + 1)
+[baseScopeP, baseScopeB, baseScopeV] = getBaseScope(timeframe.period)
+
+parseWatch(string watchInput) =>
+    parts = str.split(watchInput, ":")
+    array.size(parts) > 1 ? array.get(parts, 1) : watchInput
+
+getColumnId(watchInput) =>
+    ticker = parseWatch(watchInput)
+    array.indexof(watchlist, ticker) + 1
+
+getGradientColor(float value, float min, float max, color colorLow, color colorHigh, int opacity) =>
+    color.new(color.from_gradient(value, min, max, colorLow, colorHigh), opacity) 
+
+// Uses a single color to create an intesity color, values zero and below have no color.
+getIntensityColor(float value, float min, float max, color baseColor) =>
+    // Calm reference
+    float calmLevel = min
+    float maxEnergy = max
+
+    // Only count energy ABOVE calm
+    float distance = math.max(value - calmLevel, 0)
+
+    // Normalize to 0–1
+    float norm = distance / (maxEnergy - calmLevel)
+    norm := math.min(norm, 1)
+
+    // Map to transparency (lower = stronger)
+    int intensity = 90 - int(norm * 70)
+    color.new(baseColor, intensity)
+
+// Uses two different colors for postive and negative numbers with an intesity color.
+getIntensityColorN(float value, float negMax, float posMax, color posColor, color negColor) =>
+    // ----- Negative values -----
+    if value < 0
+        float negNorm = math.min(math.abs(value) / math.abs(negMax), 1)
+        int intensity = 90 - int(negNorm * 70)
+        color.new(negColor, intensity)
+
+    // ----- Positive values -----
+    else
+        float posNorm = math.min(value / posMax, 1)
+        int intensity = 90 - int(posNorm * 70)
+        color.new(posColor, intensity)
+
+getMetrics(string symbol, int basePeriod) =>
+    [rorBase, ror1x, ror3x, ror5x, ror10x, stochBase, stoch1x, stoch3x, stoch5x, stoch10x, energyBase, energy1x, energy3x, energy5x, energy10x, posBase, pos1x, pos3x, pos5x, pos10x, riskText, riskTooltip] = request.security(symbol, timeframe.period,
+        RAF.getMetrics(
+            high,
+            low,
+            close,
+            basePeriod
+        ),
+        lookahead = barmerge.lookahead_on
+    )
+
+    [rorBase, ror1x, ror3x, ror5x, ror10x,
+     stochBase, stoch1x, stoch3x, stoch5x, stoch10x,
+     energyBase, energy1x, energy3x, energy5x, energy10x,
+     posBase, pos1x, pos3x, pos5x, pos10x,
+     riskText, riskTooltip]
+
+formatPercent(x) =>
+    na(x) ? "—" : str.format("{0, number, #}%", x)
+
+updateTable(watch) =>
+    columnId = getColumnId(watch) 
+
+    [rorBase, ror1x, ror3x, ror5x, ror10x,
+     stochBase, stoch1x, stoch3x, stoch5x, stoch10x,
+     energyBase, energy1x, energy3x, energy5x, energy10x,
+     posBase, pos1x, pos3x, pos5x, pos10x,
+     riskText, riskTooltip] = getMetrics(watch, baseScopeP)
+    
+    table.cell_set_tooltip(tblWatch, columnId, 0, riskTooltip) 
+
+    //Performance 0X
+    table.cell(tblWatch, columnId, 1, formatPercent(rorBase), text_size = textSize, text_color = colorText, bgcolor = getIntensityColorN(rorBase, -50, 100, colorRoRPositive, colorRoRNegative), tooltip = str.format("{0} - 0X Performance", watch))
+    // Performance 1X
+    table.cell(tblWatch, columnId, 2, formatPercent(ror1x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColorN(ror1x, -50, 100, colorRoRPositive, colorRoRNegative), tooltip = str.format("{0} - 1X Performance", watch))
+    // Performance 3X
+    table.cell(tblWatch, columnId, 3, formatPercent(ror3x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColorN(ror3x, -50, 100, colorRoRPositive, colorRoRNegative), tooltip = str.format("{0} - 3X Performance", watch)) 
+    //Performance 5X
+    table.cell(tblWatch, columnId, 4, formatPercent(ror5x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColorN(ror5x, -50, 100, colorRoRPositive, colorRoRNegative), tooltip = str.format("{0} - 5X Performance", watch))
+    // Performance 10X
+    table.cell(tblWatch, columnId, 5, formatPercent(ror10x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColorN(ror10x, -50, 100, colorRoRPositive, colorRoRNegative), tooltip = str.format("{0} - 10X Performance", watch))
+ 
+    // Price
+    [watchHigh, watchLow, watchClose] = request.security(watch, timeframe.period, [high, low, close])
+    table.cell(tblWatch, columnId, 6, str.format('{0, number, currency}', watchClose), text_size = textSize, text_color = colorText, bgcolor = colorHeading)
+
+if barstate.isfirst 
+    for i = 0 to array.size(watchlist) - 1
+        table.cell(tblWatch, i + 1, 0, array.get(watchlist, i), text_color = colorText, bgcolor = colorHeading, width = cellWidth, height = cellHeight, text_size = textSize)
+
+    labels = array.from('RoR0', "RoR1", "RoR3", "RoR5", "RoR10", "$")
+    for row = 1 to array.size(labels)
+        table.cell(tblWatch, 0, row, array.get(labels, row - 1), text_color = colorText, bgcolor = colorHeading, width = cellWidth, height = cellHeight, text_size = textSize)
+
+for [i, sym] in watchlist
+    updateTable(sym)

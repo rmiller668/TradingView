@@ -1,0 +1,84 @@
+//@version=6
+indicator("668 Rating Matrix", overlay = false, max_labels_count = 500, max_lines_count = 500)
+
+import TradingView/TechnicalRating/3 as TVtr
+import TradingView/ValueAtTime/2 as VAT
+
+// Inputs
+string symbolInput = input.text_area("SPX, NDX, RUT, XAU, XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLU, XLV, VIX", "Symbol list", tooltip = "A list of symbols or ticker IDs, separated by commas and optional spaces.")
+string ratingMode = input.string("MAs and Oscillators", "Rating uses", options = ["MAs and Oscillators", "MAs", "Oscillators"])
+float maWeight = input.int(50, "Weight of MAs (%)", minval = 0, maxval = 100, step = 10) / 100
+color bullColor = input.color(#00ff00, "Bull color")
+color bearColor = input.color(#ff0000, "Bear color")
+color neutralColor = input.color(#808080, "Neutral color")
+color textColor = input.color(color.white, "Text color")
+color headingColor = input.color(color.new(color.gray, 80), "Heading background")
+int textSize = input.int(12, "Text size")
+
+// Constants
+const float LEVEL_STRONG = 0.5
+const float LEVEL_WEAK = 0.1
+
+// Table rows
+var string rowLabels = "Ticker,Daily,Weekly,Monthly,Quarterly"
+
+getWatchlist() =>
+    VAT.getArrayFromString(str.upper(symbolInput))
+
+parseWatch(string watchInput) =>
+    parts = str.split(watchInput, ":")
+    array.size(parts) > 1 ? array.get(parts, 1) : watchInput
+
+colorFromRating(float rating, color bull, color bear, color neutral) =>
+    float absRating = math.abs(nz(rating))
+    float transp = 80.0 * (1.0 - math.min(absRating, 1.0))
+    switch
+        rating > LEVEL_WEAK => color.new(bull, transp)
+        rating < -LEVEL_WEAK => color.new(bear, transp)
+        => color.new(neutral, 50)
+
+textFromRating(float rating) =>
+    switch
+        rating > LEVEL_STRONG => "St Buy"
+        rating > LEVEL_WEAK => "Buy"
+        rating < -LEVEL_STRONG => "St Sell"
+        rating < -LEVEL_WEAK => "Sell"
+        => "Neutral"
+
+getRatingForTF(string symbol, string tf) =>
+    [_, osc, mas] = request.security(symbol, tf, TVtr.calcRatingAll(), lookahead = barmerge.lookahead_off)
+    float tot = nz(mas * maWeight) + nz(osc * (1.0 - maWeight))
+    switch ratingMode
+        "MAs" => mas
+        "Oscillators" => osc
+        => tot
+
+watchlist = getWatchlist()
+var table ratingTable = table.new(position.top_center, array.size(watchlist) + 1, 5, border_width = 1)
+
+cellHeight = 95 / 5
+cellWidth = 100 / (array.size(watchlist) + 1)
+
+if barstate.isfirst
+    arrayRowLabels = str.split(rowLabels, ",")
+    for row = 0 to array.size(arrayRowLabels) - 1
+        table.cell(ratingTable, 0, row, array.get(arrayRowLabels, row), text_color = textColor, bgcolor = headingColor, width = cellWidth, height = cellHeight, text_size = textSize)
+
+    for col = 0 to array.size(watchlist) - 1
+        table.cell(ratingTable, col + 1, 0, array.get(watchlist, col), text_color = textColor, bgcolor = headingColor, width = cellWidth, height = cellHeight, text_size = textSize)
+
+if barstate.islast
+    for [col, symbol] in watchlist
+        string ticker = parseWatch(symbol)
+        float dailyRating = getRatingForTF(ticker, "D")
+        float weeklyRating = getRatingForTF(ticker, "W")
+        float monthlyRating = getRatingForTF(ticker, "M")
+        float quarterlyRating = getRatingForTF(ticker, "3M")
+
+        table.cell(ratingTable, col + 1, 1, textFromRating(dailyRating), text_color = textColor, bgcolor = colorFromRating(dailyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Daily: {1} ({2, number, 0.00})", ticker, textFromRating(dailyRating), dailyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 2, textFromRating(weeklyRating), text_color = textColor, bgcolor = colorFromRating(weeklyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Weekly: {1} ({2, number, 0.00})", ticker, textFromRating(weeklyRating), weeklyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 3, textFromRating(monthlyRating), text_color = textColor, bgcolor = colorFromRating(monthlyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Monthly: {1} ({2, number, 0.00})", ticker, textFromRating(monthlyRating), monthlyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 4, textFromRating(quarterlyRating), text_color = textColor, bgcolor = colorFromRating(quarterlyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Quarterly: {1} ({2, number, 0.00})", ticker, textFromRating(quarterlyRating), quarterlyRating), text_size = textSize, width = cellWidth, height = cellHeight)
