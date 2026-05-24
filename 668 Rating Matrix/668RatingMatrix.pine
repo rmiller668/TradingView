@@ -45,13 +45,19 @@ textFromRating(float rating) =>
         rating < -LEVEL_WEAK => "Sell"
         => "Neutral"
 
-getRatingForTF(string symbol, string tf) =>
-    [_, osc, mas] = request.security(symbol, tf, TVtr.calcRatingAll(), lookahead = barmerge.lookahead_on)
+calcRating() =>
+    [_, osc, mas] = TVtr.calcRatingAll()
     float tot = nz(mas * maWeight) + nz(osc * (1.0 - maWeight))
     switch ratingMode
         "MAs" => mas
         "Oscillators" => osc
         => tot
+
+getRatingForTF(string symbol, string tf) =>
+    request.security(symbol, tf, calcRating(), lookahead = barmerge.lookahead_on)
+
+getRatingAndPriceForTF(string symbol, string tf) =>
+    request.security(symbol, tf, [calcRating(), close], lookahead = barmerge.lookahead_on)
 
 watchlist = getWatchlist()
 var table ratingTable = table.new(position.top_center, array.size(watchlist) + 1, 5, border_width = 1)
@@ -70,10 +76,12 @@ if barstate.isfirst
 
 if barstate.islast
     for [col, symbol] in watchlist
-        float dailyRating = getRatingForTF(symbol, "D")
+        [dailyRating, price] = getRatingAndPriceForTF(symbol, "D")
         float weeklyRating = getRatingForTF(symbol, "W")
         float monthlyRating = getRatingForTF(symbol, "M")
         float quarterlyRating = getRatingForTF(symbol, "3M")
+
+        table.cell_set_tooltip(ratingTable, col + 1, 0, str.format("{0} | ${1, number, 0.00}", symbol, price))
 
         table.cell(ratingTable, col + 1, 1, textFromRating(dailyRating), text_color = textColor, bgcolor = colorFromRating(dailyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Daily: {1} ({2, number, 0.00})", symbol, textFromRating(dailyRating), dailyRating), text_size = textSize, width = cellWidth, height = cellHeight)
 
