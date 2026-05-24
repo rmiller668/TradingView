@@ -1,157 +1,74 @@
-
-//@version=6
-indicator("Technical Ratings on Chart", "Ratings", true, precision = 2)
+﻿//@version=6
+indicator("668 Rating Lower", "668 Rating Lower", false, precision = 3)
 
 import TradingView/TechnicalRating/3 as TVtr
 
-//#region ———————————————————— Constants and inputs
-
-
-// Colors
-color LIME    = #00ff00
-color RED     = #ff0000
-color WHITE   = #ffffff
-color NEUTRAL = #808080
-
-// Threshold levels for strong and weak "Buy/Sell" ratings
-var float LEVEL_STRONG = 0.5
-var float LEVEL_WEAK   = 0.1
-
-// Input options
 string RT1 = "MAs and Oscillators"
 string RT2 = "MAs"
 string RT3 = "Oscillators"
 string ON  = "On"
 string OFF = "Off"
 
-// Tooltips
-string B_TT  = "Base color for 'Buy' and 'Strong Buy' ratings. Intensity scales with rating strength."
-string S_TT  = "Base color for 'Sell' and 'Strong Sell' ratings. Intensity scales with rating strength."
+var float LEVEL_STRONG = 0.5
+var float LEVEL_WEAK   = 0.1
+
 string TF_TT = "Select a timeframe that is higher than or equal to the chart's timeframe."
-string RP_TT = (
-    "If 'On', plotted ratings update during an open realtime bar on the specified timeframe. "
-    + "If the timeframe is higher than the chart's timeframe, " 
-    + "new values that appear before an HTF bar closes become unavailable after the indicator reloads.\n\n"
-    + "If 'Off', plotted HTF ratings update only after a realtime bar closes.\n\n"
-)
-string MA_TT = (
-    "Specifies the percentage weight of the MA rating for the total rating. The percentage weight of the oscillator " 
-    + "rating is 100 - MA weight. For example, if the value is 50, the MA and oscillator ratings have a weight of 50%. " 
-    + "If the value is 60, the MA rating has 60% weight, and the oscillator rating's weight is 40% (100% - 60%)."
-)
-string TS_TT = (
-    "Specifies the height and width of the display table as a percentage of the pane's space. Use a value from 1 to 100."
-)
+string MA_TT = "Weight of the MA rating when showing the total rating."
+string RP_TT = "If off, higher timeframe ratings only update after the HTF bar closes."
 
-// Inputs
-string  GRP1            = "Display"
-string  yPosInput       = input.string("top",    "Position",      inline = "11", group = GRP1, options = ["top", "middle", "bottom"])
-string  xPosInput       = input.string("right",  "",              inline = "11", group = GRP1, options = ["left", "center", "right"])
-int     heightInput     = input.int(3,           "Height",        inline = "12", group = GRP1, minval  = 1, maxval = 100)
-int     widthInput      = input.int(10,          "Width",         inline = "12", group = GRP1, minval  = 1, maxval = 100, tooltip = TS_TT)
-color   textColorInput  = input.color(WHITE,     "Text",          inline = "13", group = GRP1)
-string  textSizeInput   = input.string("normal", "Size",          inline = "13", group = GRP1, options = ["tiny", "small", "normal", "large", "huge", "auto"])
-color   bullColorInput  = input.color(LIME,      "Bull color",    inline = "14", group = GRP1, tooltip = B_TT)
-color   bearColorInput  = input.color(RED,       "Bear color",    inline = "15", group = GRP1, tooltip = S_TT)
-color   neutColorInput  = input.color(NEUTRAL,   "Neutral color", inline = "16", group = GRP1)
+string ratingSource = input.string(RT1, "Rating to Plot", options = [RT1, RT2, RT3])
+float  maWeight     = input.int(50, "MA Weight (%)", minval = 0, maxval = 100, step = 10) / 100
+string tfInput      = input.timeframe("", "Timeframe", tooltip = TF_TT)
+bool   repaint      = input.string(ON, "Repainting", options = [ON, OFF], tooltip = RP_TT) == ON
+color  bullColor    = input.color(#00ff00, "Bull Color")
+color  bearColor    = input.color(#ff0000, "Bear Color")
+color  neutralColor = input.color(#808080, "Neutral Color")
 
-string  GRP2            = "Calculations"
-string  tfInput         = input.timeframe("",    "Timeframe",         group = GRP2, tooltip = TF_TT)
-bool    repaintInput    = input.string(ON,       "Repainting",        group = GRP2, options = [ON, OFF], tooltip = RP_TT) == ON
-string  calcsInput      = input.string(RT1,      "Rating uses",       group = GRP2, options = [RT2, RT3, RT1])
-bool    isWeighted      = calcsInput == RT1
-float   maInput         = input.int(50,          "Weight of MAs (%)", group = GRP2, tooltip = MA_TT, minval = 0, maxval = 100, step = 10) / 100
-
-
-
-//#region ———————————————————— Functions 
-
-
-// @function            Returns a color with transparency scaled continuously by rating strength.
-//                      A rating of ±1.0 = fully opaque. A rating near 0 = near-transparent.
-//                      Neutral values use the neutralColor at mid-transparency.
-// @param rating        (series float) The rating value (-1 to +1).
-// @param bullColor     (series color) The base color for positive `rating` values.
-// @param bearColor     (series color) The base color for negative `rating` values.
-// @param neutralColor  (series color) The base color for neutral `rating` values.
-// @returns             (color) A color whose transparency reflects the magnitude of `rating`.
 colorFromRating(float rating, color bullColor, color bearColor, color neutralColor) =>
-    // Map absolute rating (0–1) to transparency (80 = faint, 0 = fully opaque).
-    // At rating = 0 (neutral), transp = 80. At rating = 1.0, transp = 0.
     float absRating = math.abs(nz(rating))
     float transp    = 80.0 * (1.0 - math.min(absRating, 1.0))
-    color result    = switch
-        rating >  LEVEL_WEAK => color.new(bullColor,    transp)
-        rating < -LEVEL_WEAK => color.new(bearColor,    transp)
-        =>                      color.new(neutralColor, 50)
+    switch
+        rating >  LEVEL_WEAK => color.new(bullColor, transp)
+        rating < -LEVEL_WEAK => color.new(bearColor, transp)
+        =>                   color.new(neutralColor, 50)
 
-
-// @function            Creates a string representing the named state of a rating value.
-// @param rating        (series float) The rating value from which to derive the named state.
-// @returns             (string) One of the following strings: `"Strong Buy"`, `"Buy"`, `"Neutral"`, 
-//                      `"Sell"`, or `"Strong Sell"`.
 textFromRating(float rating) =>
-    string result = switch 
+    switch
         rating >  LEVEL_STRONG => "Strong Buy"
         rating >  LEVEL_WEAK   => "Buy"
         rating < -LEVEL_STRONG => "Strong Sell"
         rating < -LEVEL_WEAK   => "Sell"
         =>                        "Neutral"
-//#endregion
 
+bool htfUsed = tfInput != "" and timeframe.in_seconds(tfInput) > timeframe.in_seconds(timeframe.main_period)
+int  offset  = htfUsed and not repaint ? 1 : 0
+var  lookahead = htfUsed and not repaint ? barmerge.lookahead_on : barmerge.lookahead_off
 
-
-//#region ———————————————————— Calculations 
-
-
-// Get values for the data request.
-var bool htfUsed = timeframe.in_seconds(tfInput) > timeframe.in_seconds(timeframe.main_period) 
-var int  offset  = htfUsed and not repaintInput ? 1 : 0
-var lookahead    = htfUsed and not repaintInput ? barmerge.lookahead_on : barmerge.lookahead_off
-
-// Calculate the oscillator and MA ratings.
 [_, ratingOscChart, ratingMasChart] = TVtr.calcRatingAll()
-// @variable A weighted sum of the MA and oscillator ratings.
-float ratingTotChart = nz(ratingMasChart * maInput) + nz(ratingOscChart * (1.0 - maInput))
+float ratingTotChart = nz(ratingMasChart * maWeight) + nz(ratingOscChart * (1.0 - maWeight))
 
-// Raise an error if the input timeframe is lower than the chart's timeframe.
-if barstate.isfirst and timeframe.in_seconds(timeframe.main_period) > timeframe.in_seconds(tfInput) 
-    string errorStr = "The requested timeframe cannot be lower than the chart''s timeframe (''{0}'')."
-    runtime.error(str.format(errorStr, timeframe.main_period))
+float ratingTot = na
+float ratingOsc = na
+float ratingMas = na
+if tfInput == ""
+    ratingTot := ratingTotChart
+    ratingOsc := ratingOscChart
+    ratingMas := ratingMasChart
+else
+    [ratingTot, ratingOsc, ratingMas] = request.security(
+        syminfo.tickerid,
+        tfInput,
+        [ratingTotChart[offset], ratingOscChart[offset], ratingMasChart[offset]],
+        lookahead = lookahead
+    )
 
-// Retreive the oscillator, MA, and weighted total ratings for the specified timeframe.
-[ratingTot, ratingOsc, ratingMas] = request.security(
-    syminfo.tickerid, tfInput, [ratingTotChart[offset], ratingOscChart[offset], ratingMasChart[offset]], 
-    lookahead = lookahead
-)
+float rating = switch ratingSource
+    RT2 => ratingMas
+    RT3 => ratingOsc
+    =>     ratingTot
 
-// Calculate rating colors.
-color totColor = colorFromRating(ratingTot, bullColorInput, bearColorInput, neutColorInput)
-color masColor = colorFromRating(ratingMas, bullColorInput, bearColorInput, neutColorInput)
-color oscColor = colorFromRating(ratingOsc, bullColorInput, bearColorInput, neutColorInput)
+color ratingColor = colorFromRating(rating, bullColor, bearColor, neutralColor)
 
-// Assign the user-selected rating and corresponding color to separate variables for display.
-[userRating, userColor] = switch calcsInput
-    RT2 => [ratingMas, masColor]
-    RT3 => [ratingOsc, oscColor]
-    =>     [ratingTot, totColor]
-//#endregion
-
-
-
-//#region ———————————————————— Display 
-
-
-// Draw a table to display the selected rating's state on the last bar.
-var table display = table.new(yPosInput + "_" + xPosInput, 1, 1)
-if barstate.isfirst
-    table.cell(display, 0, 0, na, widthInput, heightInput, textColorInput, text_size = textSizeInput)
-else if barstate.islast
-    table.cell_set_text(display,    0, 0, textFromRating(userRating))   
-    table.cell_set_bgcolor(display, 0, 0, userColor)
-
-// Plot rating values in the data window.
-plot(ratingTot, "All",         totColor, display = display.data_window, editable = false)
-plot(ratingMas, "MAs",         masColor, display = display.data_window, editable = false)
-plot(ratingOsc, "Oscillators", oscColor, display = display.data_window, editable = false)
-//#endregion
+plot(rating, "Rating", ratingColor, linewidth = 2)
+plot(0.0, "Zero Line", color = color.new(#888888, 50), style = plot.style_line, linewidth = 1)
+hline(0.0, "Zero", color = color.new(#888888, 60), linestyle = hline.style_dashed, linewidth = 1)
