@@ -5,7 +5,7 @@ import TradingView/TechnicalRating/3 as TVtr
 import TradingView/ValueAtTime/2 as VAT
 
 // Inputs
-string symbolInput = input.text_area("XAU, XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLU, XLV", "Symbol list", tooltip = "A list of symbols or ticker IDs, separated by commas and optional spaces.")
+string symbolInput = input.text_area("SPX, NDX, RUT, XAU, XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLU, XLV, VIX", "Symbol list", tooltip = "A list of symbols or ticker IDs, separated by commas and optional spaces.")
 string ratingMode = input.string("MAs and Oscillators", "Rating uses", options = ["MAs and Oscillators", "MAs", "Oscillators"])
 float maWeight = input.int(50, "Weight of MAs (%)", minval = 0, maxval = 100, step = 10) / 100
 color bullColor = input.color(color.rgb(74, 173, 175), "Bull color")
