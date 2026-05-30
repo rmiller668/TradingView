@@ -1,144 +1,110 @@
 //@version=6
-indicator("Rate of Return (%)", overlay = false)
+indicator("Risk Compensation(%)", "668 RCG", overlay = false)
+
+// Risk Compensation Gauge (RCG)
+//
+// The Risk Compensation Gauge (RCG) reveals the Risk Compensation Profile of an asset.
+// It measures whether compensation for carrying market risk is improving,
+// deteriorating, rewarded, or punished over time.
+//
+// Markets do not pay participants for avoiding risk.
+// Markets compensate participants for accepting risk that is being rewarded.
+//
+// Price determines the cost of participation.
+// Risk compensation determines the quality of that participation.
+//
+// A sliding return window compares today's close to the close
+// Basis Periods ago. As each new bar forms, both the entry and
+// exit points move forward, creating a continuous evaluation
+// of risk compensation.
+//
+// Basis Line (Mechanics):
+// Measures the percentage return between today's close and the
+// close Basis Periods ago.
+//
+// Basis Line (Meaning):
+// Represents the current compensation received for carrying risk
+// over the selected Basis Period.
+//
+// Trend Line (Mechanics):
+// Averages recent Basis measurements over the Smoothing Period.
+// Each Basis value represents a separate sliding-window return,
+// and the Trend Line is the average of those recent outcomes.
+//
+// Trend Line (Meaning):
+// Represents the underlying compensation trend,
+// revealing whether compensation for carrying risk is generally
+// improving or deteriorating over time.
+//
+// Zero Line:
+// Boundary between positive and negative compensation.
+//
+// Interpretation:
+//
+// Basis > Trend = Compensation improving relative to recent average.
+// Basis < Trend = Compensation deteriorating relative to recent average.
+// Above Zero    = Positive compensation.
+// Below Zero    = Negative compensation.
+//
+// Together they answer:
+//
+// 1. Is compensation positive or negative?
+// 2. Is compensation improving or deteriorating?
+// 3. Is the compensation sufficient to justify carrying the risk?
 
 // ── Inputs ─────────────────────────────────────────────
-basis = input.int(12, "Basis Period", minval = 1,
-     tooltip = "Lookback used to measure rolling basis risk rate of return.")
+basisPeriod = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current risk compensation.")
+smoothPeriod = input.int(12, "Smoothing Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the compensation trend.")
 
-fastPeriod = input.int(3, "Short-term Period", minval = 1,
-     tooltip = "Short-term return regime (immediate risk compensation).")
+// ── Risk Compensation Calculation ──────────────────────
+basePrice = close[basisPeriod]
+basisRoR = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
+smoothRoR = ta.sma(basisRoR, smoothPeriod)
 
-slowPeriod = input.int(12, "Long-term Period", minval = 1,
-     tooltip = "Intermediate return regime (sustained risk compensation).")
-
-statusPosition = input.string(
-     "top_right",
-     "Status Box Position",
-     options = ["top_left", "top_right", "bottom_left", "bottom_right"]
-)
-
-// ── Status Colors (Inputs) ─────────────────────────────
-upColor = input.color(color.rgb(34, 171, 148), "Advancing Color")
-downColor = input.color(color.rgb(242, 54, 69), "Declining Color")
-neutralColor = input.color(color.new(color.gray, 80), "Flat Color")
-textColor = input.color(color.white, "Text Color")
-
-// ── Rate of Return Calculation ─────────────────────────
-basePrice   = close[basis]
-performance = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
-
-realRoR = performance
-fastRoR = ta.sma(performance, fastPeriod)
-slowRoR = ta.sma(performance, slowPeriod)
-rorSpread = fastRoR - slowRoR
-
-// ── Direction Logic ────────────────────────────────────
-realDir =
-     realRoR > 1 ?  1 :
-     realRoR < 0 ? -1 : 0
-
-fastDir =
-     fastRoR > 1 ?  1 :
-     fastRoR < 0 ? -1 : 0
-
-slowDir =
-     slowRoR > 1 ?  1 :
-     slowRoR < 0 ? -1 : 0
-
-// ── Cell Colors ────────────────────────────────────────
-realColor =
-     realDir ==  1 ? upColor :
-     realDir == -1 ? downColor :
-     neutralColor
-     
-fastColor =
-     fastDir ==  1 ? upColor :
-     fastDir == -1 ? downColor :
-     neutralColor
-
-slowColor =
-     slowDir ==  1 ? upColor :
-     slowDir == -1 ? downColor :
-     neutralColor
-
-formatPercent(x) =>
-    na(x) ? "—" : str.format("{0,number,#0.0}%", x) 
-
-// ── Plot ───────────────────────────────────────────────
-plot(performance, title = "Basis RoR (%)", linewidth = 1, color = color.gray)
-plot(fastRoR, title = "Short-term RoR (%)", linewidth = 2, color = color.rgb(16, 172, 175))
-plot(slowRoR, title = "Long-term RoR (%)", linewidth = 2, color = color.white)
-// ── Histogram (Fast − Slow) ────────────────────────────
-plot(
-    rorSpread,
-    title = "RoR Regime Spread",
-    style = plot.style_histogram,
-    color = rorSpread > 0 ? upColor : rorSpread < 0 ? downColor : neutralColor,
-    linewidth = 2
-)
+plot(smoothRoR, title = "Trend Compensation (%)", linewidth = 2, color = color.rgb(16, 172, 175))
+plot(basisRoR, title = "Basis Compensation (%)", linewidth = 2, color = color.rgb(184, 184, 184))
 
 // ── Zero Line ──────────────────────────────────────────
-hline(0, "Zero Line")
+hline(0, "Zero Line", color=color.rgb(184, 184, 184))
 
-// ── Status Table (FAST | SLOW) ─────────────────────────
-var table statusTable = table.new(
-     statusPosition == "top_left" ? position.top_left :
-     statusPosition == "top_right" ? position.top_right :
-     statusPosition == "bottom_left" ? position.bottom_left :
-     position.bottom_right,
-     2, 2, border_width = 1
-)
-
-// ── Orientation Hint ───────────────────────────────────
-var table hintTable = table.new(
-    position.bottom_center,
-    1, 1,
-    frame_color = color.new(color.gray, 80),
-    frame_width = 1
-)
-
-if barstate.islast
-    table.merge_cells(statusTable, 0, 0, 1, 0)
-    // FAST cell
-    table.cell(
-        statusTable,
-        0, 0,
-        "BASIS (" + formatPercent(performance) + ")",
-        text_color = textColor,
-        bgcolor = realColor,
-        text_size = size.small
-    )
-
-    // FAST cell
-    table.cell(
-        statusTable,
-        0, 1,
-        "FAST (" + formatPercent(fastRoR) + ")",
-        text_color = textColor,
-        bgcolor = fastColor,
-        text_size = size.small,
-        width = 5
-    )
-
-    // SLOW cell
-    table.cell(
-        statusTable,
-        1, 1,
-        "SLOW (" + formatPercent(slowRoR) + ")",
-        text_color = textColor,
-        bgcolor = slowColor,
-        text_size = size.small,
-        width = 5
-    )
-
-    // Hint
-    table.cell(
-        hintTable,
-        0, 0,
-        "How is the market currently compensating risk exposure, and is that compensation improving or deteriorating across regimes?",
-        text_color = color.gray,
-        bgcolor = color.new(color.black, 90),
-        text_size = size.small,
-        text_halign = text.align_center,
-        width = 100
-    )
+// Compensation Cycle:
+//
+// Compensation Expanding
+// Basis > Trend > 0
+// Current compensation exceeds the recent average.
+// Compensation is positive and improving.
+//
+// Compensation Deteriorating
+// Trend > Basis > 0
+// Compensation remains positive, but it is weakening.
+//
+// Negative Compensation Beginning
+// Basis < 0 < Trend
+// Current compensation has turned negative while the
+// recent average remains positive. Transition phase.
+//
+// Negative Compensation Accelerating
+// Basis < Trend < 0
+// Compensation is negative and deteriorating.
+// Capital punishment is intensifying.
+//
+// Negative Compensation Decelerating
+// Trend < 0
+// Basis > Trend
+// Compensation is still negative, but the penalty for
+// carrying risk is becoming less severe.
+//
+// Compensation Returning
+// Basis > 0
+// Trend < 0
+// Current compensation has turned positive while the
+// recent average remains negative. Recovery underway.
+//
+// Compensation Expanding Again
+// Basis > Trend > 0
+// Compensation is positive and improving.
+// A new compensation expansion cycle may be emerging.
+//
+// The goal is not to identify the exact price top or bottom.
+// The goal is to identify when compensation for carrying risk
+// is improving, deteriorating, or changing regimes.
