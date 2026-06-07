@@ -164,6 +164,13 @@ The Risk Compensation Gauge was developed from this broader view of markets. It 
 
 **How is the market currently compensating those who choose to participate?**
 
+This perspective ultimately changes how a market chart is viewed.
+
+> **The chart is not a history of prices. The chart is a history of compensation environments.**
+
+Price remains visible, but price is no longer the primary story being told. Price records the cost participants paid. Compensation reveals the quality of participation they received in return. Through this lens, markets become more than collections of fluctuating prices. They become evolving environments that reward, deteriorate, or punish participation over time.
+
+
 # The Economics of Participation
 
 At its core, investing is an economic decision. Every time capital is committed to a market, an investor makes a judgment about the relationship between what must be given and what may be received in return. Although financial markets are often discussed in terms of charts, indicators, valuation models, and economic forecasts, the underlying decision remains remarkably simple. A participant exchanges certainty for uncertainty in the hope that the eventual outcome will justify the risk accepted along the way.

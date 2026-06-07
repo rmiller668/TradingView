@@ -4,8 +4,8 @@ indicator("668 MTF Ratings", "MTF Ratings", true, precision = 2)
 import TradingView/TechnicalRating/3 as TVtr
 
 // Colors
-color LIME    = #22ab94
-color RED     = #f23645
+color LIME    = #00ff00
+color RED     = #ff0000
 color WHITE   = #ffffff
 color NEUTRAL = #808080
 
@@ -75,13 +75,15 @@ calcRating() =>
         RT3 => ratingOsc
         =>    ratingTot
 
-getRatingForTF(string tf) =>
-    request.security(syminfo.tickerid, tf, calcRating(), lookahead = barmerge.lookahead_on)
+getRatingForTF(simple string tf) =>
+    simple bool htfUsed = timeframe.in_seconds(tf) > timeframe.in_seconds(timeframe.main_period)
+    simple int offset = htfUsed and not repaint ? 1 : 0
+    simple barmerge_lookahead lookahead = htfUsed and not repaint ? barmerge.lookahead_on : barmerge.lookahead_off
+    request.security(syminfo.tickerid, tf, calcRating()[offset], lookahead = lookahead)
 
 setRatingCell(table display, int col, string label, float rating) =>
     string ratingText = textFromRating(rating)
-    //string cellText = str.format("{0}\n{1}", label, ratingText)
-    string cellText = str.format("{0}", ratingText)
+    string cellText = str.format("{0}\n{1}", label, ratingText)
     table.cell(
          display, col, 0, cellText,
          width = widthInput, height = heightInput,
@@ -98,7 +100,7 @@ float monthlyRating   = getRatingForTF("M")
 float quarterlyRating = getRatingForTF("3M")
 
 // Display
-var table display = table.new(yPosInput + "_" + xPosInput, 4, 1, border_width = 1)
+var table display = table.new(yPosInput + "_" + xPosInput, 4, 1)
 
 if barstate.islast
     // Columns are arranged so the table reads right-to-left as Daily, Weekly, Monthly, Quarterly.
