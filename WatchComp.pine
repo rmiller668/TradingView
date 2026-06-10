@@ -1,0 +1,88 @@
+//@version=6
+indicator('WatchComp', overlay = false)
+
+import TradingView/ValueAtTime/2 as VAT
+
+colorPositive = input.color(color.rgb(74, 173, 175), 'Positive Color')
+colorNegative = input.color(color.rgb(175, 76, 74), 'Negative Color')
+colorNeutral = input.color(color.rgb(74, 74, 74), 'Neutral Color')
+colorText = input.color(color.rgb(219, 219, 219), 'Text')
+colorHeading = input.color(color.new(color.gray, 80), 'Headings')
+textSize = input.int(12, 'Text Size', minval = 8, maxval = 24)
+
+basisPeriod = input.int(12, 'Basis Period', minval = 1, tooltip = 'Sliding lookback window used to measure current risk compensation.')
+string watchListInput = input.text_area('XAUUSD, GC1!, GLD, GDX, NEM, AEM, GOLD, KGC, AU, AG', 'Symbol list', tooltip = 'A list of symbols or ticker IDs, separated by commas and optional spaces.')
+
+var array<string> watchlist = array.new_string(1, '')
+
+getTickers() =>
+    VAT.getArrayFromString(str.upper(watchListInput))
+
+parseWatch(string watchInput) =>
+    parts = str.split(watchInput, ':')
+    array.size(parts) > 1 ? array.get(parts, 1) : watchInput
+
+getColumnId(string watchInput) =>
+    array.indexof(watchlist, watchInput) + 1
+
+getIntensityColor(float value, float negMax, float posMax) =>
+    if na(value)
+        color.new(colorNeutral, 70)
+    else if value < 0
+        negNorm = math.min(math.abs(value) / math.abs(negMax), 1)
+        intensity = 90 - int(negNorm * 70)
+        color.new(colorNegative, intensity)
+    else if value > 0
+        posNorm = math.min(value / posMax, 1)
+        intensity = 90 - int(posNorm * 70)
+        color.new(colorPositive, intensity)
+    else
+        color.new(colorNeutral, 70)
+
+formatPercent(float value) =>
+    na(value) ? '-' : str.format('{0, number, #.#}%', value)
+
+getCompMetrics(int period) =>
+    basePrice = close[period]
+    basisRoR = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
+    trend1x = ta.sma(basisRoR, period)
+    trend2x = ta.sma(basisRoR, period * 2)
+    trend3x = ta.sma(basisRoR, period * 3)
+    trend5x = ta.sma(basisRoR, period * 5)
+
+    [basisRoR, trend1x, trend2x, trend3x, trend5x]
+
+getMetrics(string symbol, int period) =>
+    request.security(
+         symbol,
+         timeframe.period,
+         getCompMetrics(period),
+         lookahead = barmerge.lookahead_on
+    )
+
+watchlist := getTickers()
+
+var table tblWatch = table.new(position.top_center, array.size(watchlist) + 1, 6, border_width = 0)
+cellHeight = 95 / 6
+cellWidth = 100 / (array.size(watchlist) + 1)
+
+updateTable(string watch) =>
+    columnId = getColumnId(watch)
+    [basisRoR, trend1x, trend2x, trend3x, trend5x] = getMetrics(watch, basisPeriod)
+
+    table.cell(tblWatch, columnId, 1, formatPercent(basisRoR), text_size = textSize, text_color = colorText, bgcolor = getIntensityColor(basisRoR, -50, 100), tooltip = str.format('{0} - Basis Compensation ({1})', watch, basisPeriod))
+    table.cell(tblWatch, columnId, 2, formatPercent(trend1x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColor(trend1x, -50, 100), tooltip = str.format('{0} - 1x Basis Trend ({1})', watch, basisPeriod))
+    table.cell(tblWatch, columnId, 3, formatPercent(trend2x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColor(trend2x, -50, 100), tooltip = str.format('{0} - 2x Basis Trend ({1})', watch, basisPeriod * 2))
+    table.cell(tblWatch, columnId, 4, formatPercent(trend3x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColor(trend3x, -50, 100), tooltip = str.format('{0} - 3x Basis Trend ({1})', watch, basisPeriod * 3))
+    table.cell(tblWatch, columnId, 5, formatPercent(trend5x), text_size = textSize, text_color = colorText, bgcolor = getIntensityColor(trend5x, -50, 100), tooltip = str.format('{0} - 5x Basis Trend ({1})', watch, basisPeriod * 5))
+
+if barstate.isfirst
+    for i = 0 to array.size(watchlist) - 1
+        table.cell(tblWatch, i + 1, 0, parseWatch(array.get(watchlist, i)), text_color = colorText, bgcolor = colorHeading, width = cellWidth, height = cellHeight, text_size = textSize)
+
+    labels = array.from('Basis', 'Trend1', 'Trend2', 'Trend3', 'Trend5')
+    for row = 1 to array.size(labels)
+        table.cell(tblWatch, 0, row, array.get(labels, row - 1), text_color = colorText, bgcolor = colorHeading, width = cellWidth, height = cellHeight, text_size = textSize)
+
+for [i, sym] in watchlist
+    updateTable(sym)

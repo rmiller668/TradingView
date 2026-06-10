@@ -1,114 +1,92 @@
 //@version=6
-indicator("668 MTF Ratings", "MTF Ratings", true, precision = 2)
+indicator("668 Rating Matrix", overlay = false, max_labels_count = 500, max_lines_count = 500)
 
 import TradingView/TechnicalRating/3 as TVtr
-
-// Colors
-color LIME    = #22ab94
-color RED     = #f23645
-color WHITE   = #ffffff
-color NEUTRAL = #808080
-
-// Threshold levels for strong and weak Buy/Sell ratings
-const float LEVEL_STRONG = 0.5
-const float LEVEL_WEAK   = 0.1
-
-// Input options
-string RT1 = "MAs and Oscillators"
-string RT2 = "MAs"
-string RT3 = "Oscillators"
-string ON  = "On"
-string OFF = "Off"
-
-// Tooltips
-string B_TT = "Base color for Buy and Strong Buy ratings. Intensity scales with rating strength."
-string S_TT = "Base color for Sell and Strong Sell ratings. Intensity scales with rating strength."
-string RP_TT = (
-    "If On, higher-timeframe ratings update during an open realtime bar. "
-    + "If Off, higher-timeframe ratings update only after a realtime bar closes."
-)
-string MA_TT = (
-    "Specifies the percentage weight of the MA rating for the total rating. The percentage weight of the oscillator "
-    + "rating is 100 - MA weight."
-)
-string TS_TT = "Specifies the height and width of each display cell as a percentage of the pane's space."
+import TradingView/ValueAtTime/2 as VAT
 
 // Inputs
-string GRP1           = "Display"
-string yPosInput      = input.string("top",    "Position",      inline = "11", group = GRP1, options = ["top", "middle", "bottom"])
-string xPosInput      = input.string("right",  "",              inline = "11", group = GRP1, options = ["left", "center", "right"])
-int    heightInput    = input.int(3,           "Height",        inline = "12", group = GRP1, minval = 1, maxval = 100)
-int    widthInput     = input.int(10,          "Width",         inline = "12", group = GRP1, minval = 1, maxval = 100, tooltip = TS_TT)
-color  textColorInput = input.color(WHITE,     "Text",          inline = "13", group = GRP1)
-string textSizeInput  = input.string("normal", "Size",          inline = "13", group = GRP1, options = ["tiny", "small", "normal", "large", "huge", "auto"])
-color  bullColorInput = input.color(LIME,      "Bull color",    inline = "14", group = GRP1, tooltip = B_TT)
-color  bearColorInput = input.color(RED,       "Bear color",    inline = "15", group = GRP1, tooltip = S_TT)
-color  neutColorInput = input.color(NEUTRAL,   "Neutral color", inline = "16", group = GRP1)
+string symbolInput = input.text_area("SPX, NDX, RUT, XAU, XLB, XLC, XLE, XLF, XLI, XLK, XLP, XLU, XLV, VIX", "Symbol list", tooltip = "A list of symbols or ticker IDs, separated by commas and optional spaces.")
+string ratingMode = input.string("MAs and Oscillators", "Rating uses", options = ["MAs and Oscillators", "MAs", "Oscillators"])
+float maWeight = input.int(50, "Weight of MAs (%)", minval = 0, maxval = 100, step = 10) / 100
+color bullColor = input.color(color.rgb(74, 173, 175), "Bull color")
+color bearColor = input.color(color.rgb(175, 76, 74), "Bear color")
+color neutralColor = input.color(#808080, "Neutral color")
+color textColor = input.color(color.white, "Text color")
+color headingColor = input.color(color.new(color.gray, 80), "Heading background")
+int textSize = input.int(12, "Text size")
 
-string GRP2       = "Calculations"
-bool   repaint    = input.string(ON,  "Repainting",        group = GRP2, options = [ON, OFF], tooltip = RP_TT) == ON
-string ratingMode = input.string(RT1, "Rating uses",       group = GRP2, options = [RT2, RT3, RT1])
-float  maWeight   = input.int(50,     "Weight of MAs (%)", group = GRP2, tooltip = MA_TT, minval = 0, maxval = 100, step = 10) / 100
+// Constants
+const float LEVEL_STRONG = 0.5
+const float LEVEL_WEAK = 0.1
 
-// Functions
-colorFromRating(float rating, color bullColor, color bearColor, color neutralColor) =>
+// Table rows
+var string rowLabels = "Ticker,Daily,Weekly,Monthly,Quarterly"
+
+getWatchlist() =>
+    VAT.getArrayFromString(str.upper(symbolInput))
+
+parseWatch(string watchInput) =>
+    parts = str.split(watchInput, ":")
+    array.size(parts) > 1 ? array.get(parts, 1) : watchInput
+
+colorFromRating(float rating, color bull, color bear, color neutral) =>
     float absRating = math.abs(nz(rating))
-    float transp    = 80.0 * (1.0 - math.min(absRating, 1.0))
+    float transp = 80.0 * (1.0 - math.min(absRating, 1.0))
     switch
-        rating >  LEVEL_WEAK => color.new(bullColor, transp)
-        rating < -LEVEL_WEAK => color.new(bearColor, transp)
-        =>                      color.new(neutralColor, 50)
+        rating > LEVEL_WEAK => color.new(bull, transp)
+        rating < -LEVEL_WEAK => color.new(bear, transp)
+        => color.new(neutral, 50)
 
 textFromRating(float rating) =>
     switch
-        rating >  LEVEL_STRONG => "Strong Buy"
-        rating >  LEVEL_WEAK   => "Buy"
-        rating < -LEVEL_STRONG => "Strong Sell"
-        rating < -LEVEL_WEAK   => "Sell"
-        =>                        "Neutral"
+        rating > LEVEL_STRONG => "St Buy"
+        rating > LEVEL_WEAK => "Buy"
+        rating < -LEVEL_STRONG => "St Sell"
+        rating < -LEVEL_WEAK => "Sell"
+        => "Neutral"
 
 calcRating() =>
-    [_, ratingOsc, ratingMas] = TVtr.calcRatingAll()
-    float ratingTot = nz(ratingMas * maWeight) + nz(ratingOsc * (1.0 - maWeight))
+    [_, osc, mas] = TVtr.calcRatingAll()
+    float tot = nz(mas * maWeight) + nz(osc * (1.0 - maWeight))
     switch ratingMode
-        RT2 => ratingMas
-        RT3 => ratingOsc
-        =>    ratingTot
+        "MAs" => mas
+        "Oscillators" => osc
+        => tot
 
-getRatingForTF(string tf) =>
-    request.security(syminfo.tickerid, tf, calcRating(), lookahead = barmerge.lookahead_on)
+getRatingForTF(string symbol, string tf) =>
+    request.security(symbol, tf, calcRating(), lookahead = barmerge.lookahead_on)
 
-setRatingCell(table display, int col, string label, float rating) =>
-    string ratingText = textFromRating(rating)
-    //string cellText = str.format("{0}\n{1}", label, ratingText)
-    string cellText = str.format("{0}", ratingText)
-    table.cell(
-         display, col, 0, cellText,
-         width = widthInput, height = heightInput,
-         text_color = textColorInput,
-         bgcolor = colorFromRating(rating, bullColorInput, bearColorInput, neutColorInput),
-         text_size = textSizeInput,
-         tooltip = str.format("{0}: {1} ({2, number, 0.0000})", label, ratingText, rating)
-     )
+getRatingAndPriceForTF(string symbol, string tf) =>
+    request.security(symbol, tf, [calcRating(), close], lookahead = barmerge.lookahead_on)
 
-// Calculations
-float dailyRating     = getRatingForTF("D")
-float weeklyRating    = getRatingForTF("W")
-float monthlyRating   = getRatingForTF("M")
-float quarterlyRating = getRatingForTF("3M")
+watchlist = getWatchlist()
+var table ratingTable = table.new(position.top_center, array.size(watchlist) + 1, 5, border_width = 1)
 
-// Display
-var table display = table.new(yPosInput + "_" + xPosInput, 4, 1, border_width = 1)
+cellHeight = 95 / 5
+cellWidth = 100 / (array.size(watchlist) + 1)
+
+if barstate.isfirst
+    arrayRowLabels = str.split(rowLabels, ",")
+    for row = 0 to array.size(arrayRowLabels) - 1
+        table.cell(ratingTable, 0, row, array.get(arrayRowLabels, row), text_color = textColor, bgcolor = headingColor, width = cellWidth, height = cellHeight, text_size = textSize)
+
+    for col = 0 to array.size(watchlist) - 1
+        string symbol = array.get(watchlist, col)
+        table.cell(ratingTable, col + 1, 0, parseWatch(symbol), text_color = textColor, bgcolor = headingColor, width = cellWidth, height = cellHeight, text_size = textSize, tooltip = symbol)
 
 if barstate.islast
-    // Columns are arranged so the table reads right-to-left as Daily, Weekly, Monthly, Quarterly.
-    setRatingCell(display, 0, "Quarterly", quarterlyRating)
-    setRatingCell(display, 1, "Monthly",   monthlyRating)
-    setRatingCell(display, 2, "Weekly",    weeklyRating)
-    setRatingCell(display, 3, "Daily",     dailyRating)
+    for [col, symbol] in watchlist
+        [dailyRating, price] = getRatingAndPriceForTF(symbol, "D")
+        float weeklyRating = getRatingForTF(symbol, "W")
+        float monthlyRating = getRatingForTF(symbol, "M")
+        float quarterlyRating = getRatingForTF(symbol, "3M")
 
-// Plot rating values in the data window.
-plot(dailyRating,     "Daily",     colorFromRating(dailyRating,     bullColorInput, bearColorInput, neutColorInput), display = display.data_window, editable = false)
-plot(weeklyRating,    "Weekly",    colorFromRating(weeklyRating,    bullColorInput, bearColorInput, neutColorInput), display = display.data_window, editable = false)
-plot(monthlyRating,   "Monthly",   colorFromRating(monthlyRating,   bullColorInput, bearColorInput, neutColorInput), display = display.data_window, editable = false)
-plot(quarterlyRating, "Quarterly", colorFromRating(quarterlyRating, bullColorInput, bearColorInput, neutColorInput), display = display.data_window, editable = false)
+        table.cell_set_tooltip(ratingTable, col + 1, 0, str.format("{0} | ${1, number, 0.00}", symbol, price))
+
+        table.cell(ratingTable, col + 1, 1, textFromRating(dailyRating), text_color = textColor, bgcolor = colorFromRating(dailyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Daily: {1} ({2, number, 0.00})", symbol, textFromRating(dailyRating), dailyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 2, textFromRating(weeklyRating), text_color = textColor, bgcolor = colorFromRating(weeklyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Weekly: {1} ({2, number, 0.00})", symbol, textFromRating(weeklyRating), weeklyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 3, textFromRating(monthlyRating), text_color = textColor, bgcolor = colorFromRating(monthlyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Monthly: {1} ({2, number, 0.00})", symbol, textFromRating(monthlyRating), monthlyRating), text_size = textSize, width = cellWidth, height = cellHeight)
+
+        table.cell(ratingTable, col + 1, 4, textFromRating(quarterlyRating), text_color = textColor, bgcolor = colorFromRating(quarterlyRating, bullColor, bearColor, neutralColor), tooltip = str.format("{0} Quarterly: {1} ({2, number, 0.00})", symbol, textFromRating(quarterlyRating), quarterlyRating), text_size = textSize, width = cellWidth, height = cellHeight)
