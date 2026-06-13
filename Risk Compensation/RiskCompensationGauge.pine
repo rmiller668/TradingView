@@ -1,165 +1,171 @@
 //@version=6
-indicator("668 RCG Overlay", "RCG Overlay", overlay=true)
-// ── Inputs
-basisPeriod = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current risk compensation.")
-trendPeriod = input.int(12, "Trend Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the compensation trend.")
+indicator("Risk Compensation(%)", "668 RCG", overlay = false)
 
-// Overlay Colors
-aboveColor   = input.color(color(#90bff9), "Above Zero Color")
-belowColor   = input.color(color(#ffffff), "Below Zero Color")
-neutralColor = input.color(color(#4a4a4a), "Neutral Color")
-lineWidth    = input.int(2, "Overlay Line Width", minval=1, maxval=5)
+// Risk Compensation Gauge (RCG)
+//
+// The Risk Compensation Gauge (RCG) reveals the Compensation Environment
+// of an asset by measuring the compensation received for carrying risk.
+//
+// Markets do not transact in truth.
+// Markets transact in risk.
+//
+// Markets do not compensate participants for avoiding risk.
+// Markets compensate participants for accepting risk that is being rewarded.
+//
+// Price determines the cost of participation.
+// Compensation determines the quality of that participation.
+//
+// A sliding return window compares today's close to the close
+// Basis Periods ago. As each new bar forms, both the entry and
+// exit points move forward, creating a continuous evaluation
+// of compensation received for carrying risk.
+//
+// Basis Compensation (Mechanics):
+// Measures the percentage return between today's close and the
+// close Basis Periods ago.
+//
+// Basis Compensation (Meaning):
+// Represents the current compensation received by participants
+// carrying risk over the selected Basis Period.
+//
+// Compensation Environment (Mechanics):
+// Averages recent Basis Compensation measurements over the
+// Compensation Environment Period.
+//
+// Each Basis value represents a separate sliding-window return,
+// and the Compensation Environment is the average of those
+// recent compensation outcomes.
+//
+// Compensation Environment (Meaning):
+// Represents the recent compensation regime,
+// revealing whether compensation is generally improving
+// or deteriorating relative to recent history.
+//
+// Structural Compensation Environment (Mechanics):
+// Averages Basis Compensation measurements over a longer horizon,
+// creating a deeper compensation baseline.
+//
+// Structural Compensation Environment (Meaning):
+// Represents the longer-term compensation regime,
+// providing context for whether the current Compensation
+// Environment is stronger or weaker than the asset's
+// historical compensation structure.
+//
+// Zero Line:
+// Boundary between positive and negative compensation.
+//
+// Interpretation:
+//
+// Basis Compensation > Compensation Environment
+// = Compensation improving relative to the recent environment.
+//
+// Basis Compensation < Compensation Environment
+// = Compensation deteriorating relative to the recent environment.
+//
+// Compensation Environment > Structural Compensation Environment
+// = Recent compensation environment stronger than the
+//   longer-term compensation structure.
+//
+// Compensation Environment < Structural Compensation Environment
+// = Recent compensation environment weaker than the
+//   longer-term compensation structure.
+//
+// Above Zero = Positive compensation.
+// Below Zero = Negative compensation.
+//
+// Together they answer:
+//
+// 1. Is compensation positive or negative?
+// 2. Is compensation improving or deteriorating?
+// 3. Is the recent compensation environment stronger or weaker
+//    than the longer-term compensation structure?
+// 4. Is the compensation sufficient to justify carrying the risk?
 
-// Compensation Environment Label
-showEnvironmentLabel = input.bool(true, "Show Compensation Environment")
-environmentTextSizeInput = input.string("Normal", "Environment Text Size", options=["Tiny", "Small", "Normal", "Large", "Huge"])
+// ── Inputs ─────────────────────────────────────────────
+basisPeriod        = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current compensation.")
+environmentPeriod  = input.int(12, "Compensation Environment Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the current compensation environment.")
+structuralPeriod   = input.int(60, "Structural Environment Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the structural compensation environment.")
 
-// Current Price Line
-showCurrentPriceLine = input.bool(true, "Show Current Price Line")
-currentLineStyleInput = input.string("Dotted", "Current Price Line Style", options=["Solid", "Dashed", "Dotted"])
-currentLineWidth = input.int(1, "Current Price Line Width", minval=1, maxval=5)
-
-// Window Options
-showBasisWindow = input.bool(false, "Show Basis Window")
-showTrendWindow = input.bool(false, "Show Trend Window")
-
-basisLineColor = input.color(color.rgb(184, 184, 184), "Basis Window Line Color")
-trendLineColor = input.color(color.rgb(16, 172, 175), "Trend Window Line Color")
-
-// ── RCG Calculation
+// ── Risk Compensation Calculation ──────────────────────
 basePrice = close[basisPeriod]
-basisRoR  = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
-trendRoR  = ta.sma(basisRoR, trendPeriod)
-compDifferential = basisRoR - trendRoR
 
-// ── Full Trend Compensation Window
-colorLookback = basisPeriod + trendPeriod - 1
+basisRoR       = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
+environmentRoR = ta.sma(basisRoR, environmentPeriod)
+structuralRoR  = ta.sma(basisRoR, structuralPeriod)
 
-highestPositive = ta.highest(math.max(trendRoR, 0), colorLookback)
-lowestNegative  = ta.lowest(math.min(trendRoR, 0), colorLookback)
+// ── Plots ──────────────────────────────────────────────
+plot(environmentRoR, title = "Compensation Environment (%)", linewidth = 2, color = color(#90bff9))
+plot(structuralRoR, title = "Structural Compensation Environment (%)", linewidth = 2, color = color(#6f7f94), linestyle = plot.linestyle_dotted)
+plot(basisRoR, title = "Basis Compensation (%)", linewidth = 2, color = color.new(#dbdbdb, 70))
 
-positiveSpan = math.max(highestPositive, 0.0001)
-negativeSpan = math.max(math.abs(lowestNegative), 0.0001)
+// ── Zero Line ──────────────────────────────────────────
+hline(0, "Zero Line", linewidth = 1, linestyle = hline.style_solid, color = color(#636363))
 
-// ── Color Function
-getCompColor(value) =>
-    if na(value)
-        neutralColor
-    else if value > 0
-        strength = math.min(value / positiveSpan, 1)
-        color.from_gradient(strength, 0, 1, neutralColor, aboveColor)
-    else if value < 0
-        strength = math.min(math.abs(value) / negativeSpan, 1)
-        color.from_gradient(strength, 0, 1, neutralColor, belowColor)
-    else
-        neutralColor
-
-getLineStyle(styleInput) =>
-    switch styleInput
-        "Solid"  => line.style_solid
-        "Dashed" => line.style_dashed
-        "Dotted" => line.style_dotted
-
-getTextSize(sizeInput) =>
-    switch sizeInput
-        "Tiny"   => size.tiny
-        "Small"  => size.small
-        "Normal" => size.normal
-        "Large"  => size.large
-        "Huge"   => size.huge
-
-overlayColor = getCompColor(trendRoR)
-
-// ── Compensation Environment Language
-stateText =
-     na(trendRoR) ? "Unavailable" :
-     trendRoR > 0 ? "Positive" :
-     trendRoR < 0 ? "Negative" :
-     "Transitional"
-
-directionText =
-     na(basisRoR) or na(trendRoR) ? "" :
-     basisRoR > trendRoR ? "Improving" :
-     basisRoR < trendRoR ? "Deteriorating" :
-     "Stable"
-
-environmentText =
-     stateText == "Unavailable" ? "Compensation Environment: Unavailable" :
-     "Compensation Environment: " + stateText + " and " + directionText +
-     " (" + str.tostring(compDifferential, "#.#") + "%)"
-
-// ── Compensation Environment Display
-var table envTable = table.new(position.bottom_right, 1, 1)
-
-if barstate.islast and showEnvironmentLabel
-    table.cell(
-         envTable,
-         0,
-         0,
-         environmentText,
-         text_color = overlayColor,
-         text_size = getTextSize(environmentTextSizeInput),
-         bgcolor = color.new(color.black, 100)
-    )
-
-if barstate.islast and not showEnvironmentLabel
-    table.clear(envTable, 0, 0)
-
-// ── Compensation-Colored Price Overlay
-plot(
-     close,
-     title = "Compensation-Colored Price",
-     color = overlayColor,
-     linewidth = lineWidth
-)
-
-// ── Drawing Objects
-var line basisLine = na
-var line trendLine = na
-var line currentPriceLine = na
-
-// ── Draw Compensation Windows And Current Price Line
-if bar_index >= colorLookback
-
-    line.delete(basisLine)
-    line.delete(trendLine)
-    line.delete(currentPriceLine)
-
-    if showBasisWindow
-        basisLine := line.new(
-             x1 = bar_index - basisPeriod,
-             y1 = close[basisPeriod],
-             x2 = bar_index,
-             y2 = close,
-             xloc = xloc.bar_index,
-             extend = extend.none,
-             color = basisLineColor,
-             width = 1,
-             style = line.style_solid
-        )
-
-    if showTrendWindow
-        trendLine := line.new(
-             x1 = bar_index - colorLookback,
-             y1 = close[colorLookback],
-             x2 = bar_index,
-             y2 = close,
-             xloc = xloc.bar_index,
-             extend = extend.none,
-             color = trendLineColor,
-             width = 1,
-             style = line.style_solid
-        )
-
-    if showCurrentPriceLine
-        currentPriceLine := line.new(
-            x1 = bar_index - 1,
-            y1 = close,
-            x2 = bar_index,
-            y2 = close,
-            xloc = xloc.bar_index,
-            extend = extend.both,
-            color = overlayColor,
-            width = currentLineWidth,
-            style = getLineStyle(currentLineStyleInput)
-        )
+// Compensation States:
+//
+// Positive and Improving
+// Basis Compensation > Compensation Environment > 0
+//
+// Current compensation exceeds the recent compensation environment.
+// Participants carrying risk over the selected horizon are receiving
+// increasing compensation.
+//
+// Positive but Deteriorating
+// Compensation Environment > Basis Compensation > 0
+//
+// Compensation remains positive, but current compensation is
+// weakening relative to the recent compensation environment.
+//
+// Negative Beginning
+// Basis Compensation < 0 < Compensation Environment
+//
+// Current compensation has turned negative while the recent
+// compensation environment remains positive.
+//
+// This represents a transition from positive to negative compensation.
+//
+// Negative and Deteriorating
+// Basis Compensation < Compensation Environment < 0
+//
+// Compensation is negative and current compensation continues
+// to weaken relative to the recent compensation environment.
+//
+// Participants carrying risk are receiving increasingly
+// unfavorable compensation outcomes.
+//
+// Negative but Decelerating
+// Compensation Environment < 0
+// Basis Compensation > Compensation Environment
+//
+// Compensation remains negative, but current compensation
+// is improving relative to the recent compensation environment.
+//
+// The penalty for carrying risk is becoming less severe.
+//
+// Returning Positive
+// Basis Compensation > 0
+// Compensation Environment < 0
+//
+// Current compensation has turned positive while the recent
+// compensation environment remains negative.
+//
+// This represents a transition from negative to positive compensation.
+//
+// Structural Context:
+//
+// Compensation Environment > Structural Compensation Environment
+//
+// The recent compensation environment is stronger than the
+// longer-term compensation structure.
+//
+// Compensation Environment < Structural Compensation Environment
+//
+// The recent compensation environment is weaker than the
+// longer-term compensation structure.
+//
+// The goal is not to identify the exact price top or bottom.
+// The goal is to identify whether compensation is positive
+// or negative, improving or deteriorating, and whether the
+// current compensation environment is strengthening or
+// weakening relative to the asset's longer-term
+// compensation structure.

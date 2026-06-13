@@ -1,144 +1,165 @@
 //@version=6
-indicator("Risk Compensation(%)", "668 RCG", overlay = false)
-
-// Risk Compensation Gauge (RCG)
-//
-// The Risk Compensation Gauge (RCG) reveals the Risk Compensation Profile of an asset.
-// It measures whether compensation for carrying market risk is improving,
-// deteriorating, rewarded, or punished over time.
-//
-// Markets do not pay participants for avoiding risk.
-// Markets compensate participants for accepting risk that is being rewarded.
-//
-// Price determines the cost of participation.
-// Risk compensation determines the quality of that participation.
-//
-// A sliding return window compares today's close to the close
-// Basis Periods ago. As each new bar forms, both the entry and
-// exit points move forward, creating a continuous evaluation
-// of risk compensation.
-//
-// Basis Line (Mechanics):
-// Measures the percentage return between today's close and the
-// close Basis Periods ago.
-//
-// Basis Line (Meaning):
-// Represents the current compensation received for carrying risk
-// over the selected Basis Period.
-//
-// Trend Line (Mechanics):
-// Averages recent Basis measurements over the Smoothing Period.
-// Each Basis value represents a separate sliding-window return,
-// and the Trend Line is the average of those recent outcomes.
-//
-// Trend Line (Meaning):
-// Represents the underlying compensation trend,
-// revealing whether compensation for carrying risk is generally
-// improving or deteriorating over time.
-//
-// Zero Line:
-// Boundary between positive and negative compensation.
-//
-// Interpretation:
-//
-// Basis > Trend = Compensation improving relative to recent average.
-// Basis < Trend = Compensation deteriorating relative to recent average.
-// Above Zero    = Positive compensation.
-// Below Zero    = Negative compensation.
-//
-// Together they answer:
-//
-// 1. Is compensation positive or negative?
-// 2. Is compensation improving or deteriorating?
-// 3. Is the compensation sufficient to justify carrying the risk?
-
-// ── Inputs ─────────────────────────────────────────────
+indicator("668 RCG Overlay", "RCG Overlay", overlay=true)
+// ── Inputs
 basisPeriod = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current risk compensation.")
 trendPeriod = input.int(12, "Trend Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the compensation trend.")
 
-// ── Risk Compensation Calculation ──────────────────────
+// Overlay Colors
+aboveColor   = input.color(color(#90bff9), "Above Zero Color")
+belowColor   = input.color(color(#ffffff), "Below Zero Color")
+neutralColor = input.color(color(#4a4a4a), "Neutral Color")
+lineWidth    = input.int(2, "Overlay Line Width", minval=1, maxval=5)
+
+// Compensation Environment Label
+showEnvironmentLabel = input.bool(true, "Show Compensation Environment")
+environmentTextSizeInput = input.string("Normal", "Environment Text Size", options=["Tiny", "Small", "Normal", "Large", "Huge"])
+
+// Current Price Line
+showCurrentPriceLine = input.bool(true, "Show Current Price Line")
+currentLineStyleInput = input.string("Dotted", "Current Price Line Style", options=["Solid", "Dashed", "Dotted"])
+currentLineWidth = input.int(1, "Current Price Line Width", minval=1, maxval=5)
+
+// Window Options
+showBasisWindow = input.bool(false, "Show Basis Window")
+showTrendWindow = input.bool(false, "Show Trend Window")
+
+basisLineColor = input.color(color.rgb(184, 184, 184), "Basis Window Line Color")
+trendLineColor = input.color(color.rgb(16, 172, 175), "Trend Window Line Color")
+
+// ── RCG Calculation
 basePrice = close[basisPeriod]
-basisRoR = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
-trendRoR = ta.sma(basisRoR, trendPeriod)
+basisRoR  = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
+trendRoR  = ta.sma(basisRoR, trendPeriod)
+compDifferential = basisRoR - trendRoR
 
-plot(trendRoR, title = "Trend Compensation (%)", linewidth = 1, color = color(#90bff9))
-plot(basisRoR, title = "Basis Compensation (%)", linewidth = 2, color = color(#dbdbdb))
+// ── Full Trend Compensation Window
+colorLookback = basisPeriod + trendPeriod - 1
 
-// ── Zero Line ──────────────────────────────────────────
-hline(0, "Zero Line", linewidth = 1, linestyle = hline.style_solid, color=color(#636363))
+highestPositive = ta.highest(math.max(trendRoR, 0), colorLookback)
+lowestNegative  = ta.lowest(math.min(trendRoR, 0), colorLookback)
 
-// Compensation Environment Cycle:
-//
-// Positive Compensation Environment - Improving
-// Basis > Trend > 0
-// Participation is being rewarded.
-// Compensation is positive and improving.
-//
-// Positive Compensation Environment - Deteriorating
-// Trend > Basis > 0
-// Participation is still being rewarded,
-// but compensation is becoming less favorable.
-//
-// Transitional Compensation Environment - Deteriorating
-// Basis < 0 < Trend
-// Current compensation has turned negative while
-// established compensation remains positive.
-// Compensation is transitioning toward a Negative
-// Compensation State.
-//
-// Negative Compensation Environment - Deteriorating
-// Basis < Trend < 0
-// Participation is being punished.
-// Compensation is negative and becoming less favorable.
-//
-// Negative Compensation Environment - Improving
-// Trend < 0
-// Basis > Trend
-// Participation is still being punished,
-// but compensation is becoming less unfavorable.
-//
-// Transitional Compensation Environment - Improving
-// Basis > 0
-// Trend < 0
-// Current compensation has turned positive while
-// established compensation remains negative.
-// Compensation is transitioning toward a Positive
-// Compensation State.
-//
-// Positive Compensation Environment - Improving
-// Basis > Trend > 0
-// Participation is being rewarded.
-// Compensation is positive and improving.
-//
-// Compensation State
-// Determined by Trend Compensation relative to Zero.
-//
-// Positive Compensation State
-// Trend > 0
-//
-// Transitional Compensation State
-// Trend approximately equal to 0
-//
-// Negative Compensation State
-// Trend < 0
-//
-// Compensation Direction
-// Determined by Basis Compensation relative to Trend Compensation.
-//
-// Improving
-// Basis > Trend
-//
-// Stable
-// Basis approximately equal to Trend
-//
-// Deteriorating
-// Basis < Trend
-//
-// Compensation Environment
-// The combination of Compensation State and
-// Compensation Direction.
-//
-// The goal is not to identify the exact price top or bottom.
-// The goal is to identify the current Compensation Environment
-// and observe when compensation for carrying risk is improving,
-// deteriorating, or transitioning between Compensation States.
+positiveSpan = math.max(highestPositive, 0.0001)
+negativeSpan = math.max(math.abs(lowestNegative), 0.0001)
+
+// ── Color Function
+getCompColor(value) =>
+    if na(value)
+        neutralColor
+    else if value > 0
+        strength = math.min(value / positiveSpan, 1)
+        color.from_gradient(strength, 0, 1, neutralColor, aboveColor)
+    else if value < 0
+        strength = math.min(math.abs(value) / negativeSpan, 1)
+        color.from_gradient(strength, 0, 1, neutralColor, belowColor)
+    else
+        neutralColor
+
+getLineStyle(styleInput) =>
+    switch styleInput
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+getTextSize(sizeInput) =>
+    switch sizeInput
+        "Tiny"   => size.tiny
+        "Small"  => size.small
+        "Normal" => size.normal
+        "Large"  => size.large
+        "Huge"   => size.huge
+
+overlayColor = getCompColor(trendRoR)
+
+// ── Compensation Environment Language
+stateText =
+     na(trendRoR) ? "Unavailable" :
+     trendRoR > 0 ? "Positive" :
+     trendRoR < 0 ? "Negative" :
+     "Transitional"
+
+directionText =
+     na(basisRoR) or na(trendRoR) ? "" :
+     basisRoR > trendRoR ? "Improving" :
+     basisRoR < trendRoR ? "Deteriorating" :
+     "Stable"
+
+environmentText =
+     stateText == "Unavailable" ? "Compensation Environment: Unavailable" :
+     "Compensation Environment: " + stateText + " and " + directionText +
+     " (" + str.tostring(compDifferential, "#.#") + "%)"
+
+// ── Compensation Environment Display
+var table envTable = table.new(position.bottom_right, 1, 1)
+
+if barstate.islast and showEnvironmentLabel
+    table.cell(
+         envTable,
+         0,
+         0,
+         environmentText,
+         text_color = overlayColor,
+         text_size = getTextSize(environmentTextSizeInput),
+         bgcolor = color.new(color.black, 100)
+    )
+
+if barstate.islast and not showEnvironmentLabel
+    table.clear(envTable, 0, 0)
+
+// ── Compensation-Colored Price Overlay
+plot(
+     close,
+     title = "Compensation-Colored Price",
+     color = overlayColor,
+     linewidth = lineWidth
+)
+
+// ── Drawing Objects
+var line basisLine = na
+var line trendLine = na
+var line currentPriceLine = na
+
+// ── Draw Compensation Windows And Current Price Line
+if bar_index >= colorLookback
+
+    line.delete(basisLine)
+    line.delete(trendLine)
+    line.delete(currentPriceLine)
+
+    if showBasisWindow
+        basisLine := line.new(
+             x1 = bar_index - basisPeriod,
+             y1 = close[basisPeriod],
+             x2 = bar_index,
+             y2 = close,
+             xloc = xloc.bar_index,
+             extend = extend.none,
+             color = basisLineColor,
+             width = 1,
+             style = line.style_solid
+        )
+
+    if showTrendWindow
+        trendLine := line.new(
+             x1 = bar_index - colorLookback,
+             y1 = close[colorLookback],
+             x2 = bar_index,
+             y2 = close,
+             xloc = xloc.bar_index,
+             extend = extend.none,
+             color = trendLineColor,
+             width = 1,
+             style = line.style_solid
+        )
+
+    if showCurrentPriceLine
+        currentPriceLine := line.new(
+            x1 = bar_index - 1,
+            y1 = close,
+            x2 = bar_index,
+            y2 = close,
+            xloc = xloc.bar_index,
+            extend = extend.both,
+            color = overlayColor,
+            width = currentLineWidth,
+            style = getLineStyle(currentLineStyleInput)
+        )

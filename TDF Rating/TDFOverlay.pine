@@ -1,0 +1,102 @@
+//@version=6
+indicator("668 TDF Overlay", shorttitle = "TDF Overlay", overlay = true)
+
+prPeriod = input.int(4, "%P Basis", minval=1, tooltip = "Basis period for historical price range.")
+bbPeriod = input.int(12, "%B Basis", minval=1, tooltip = "Base period for Bollinger Band %B")
+volPeriod = input.int(4, "%V Basis", minval=1, tooltip = "Base period for volume")
+smoothing = input.int(5, "Smoothing", minval=1, tooltip = "EMA average to apply to Composite")
+colorLow = input.color(color.rgb(242, 54, 69), "Begin Color", tooltip = "Low range color of gradient shading.")
+colorHigh = input.color(color.rgb(34, 171, 148), "End Color", tooltip = "High range color of gradient shading.")
+opacity = input.int(50, "Opacity", tooltip = "Gradient shading opacity level.")
+fallbackColor = input.color(color.gray, "Fallback Color", tooltip = "Line color used until enough bars exist to calculate the TDF Rating.")
+
+// Current Price Line
+showCurrentPriceLine = input.bool(true, "Show Current Price Line")
+currentLineStyleInput = input.string("Dotted", "Current Price Line Style", options=["Solid", "Dashed", "Dotted"])
+currentLineWidth = input.int(1, "Current Price Line Width", minval=1, maxval=5)
+
+getColor(value, opacity) =>
+    color.new(color.from_gradient(value, 20, 80, colorLow, colorHigh), opacity)
+
+getLineStyle(styleInput) =>
+    switch styleInput
+        "Solid"  => line.style_solid
+        "Dashed" => line.style_dashed
+        "Dotted" => line.style_dotted
+
+// %P calculation: Price range percentile
+getPctP(_period) =>
+    hi = ta.highest(high, _period)
+    lo = ta.lowest(low, _period)
+    (hi - lo) == 0 ? na : math.round((close - lo) / (hi - lo) * 100, 0)
+
+// %B calculation: Bollinger band percentile
+getPctB(_period) =>
+    [_, u, l] = ta.bb(close, _period, 2)
+    (u - l) == 0 ? na : math.round((close - l) / (u - l) * 100, 0)
+
+// %V calculation: Volume normalized to 50 midpoint baseline
+getPctV(_period, _baseline) =>
+    v = ta.sma(volume, _period)
+    base = ta.sma(volume, _baseline)
+    base == 0 ? na : (v / base) * 50
+
+// === Calculate %P Stack ===
+p1  = getPctP(prPeriod)
+p3  = getPctP(prPeriod * 3)
+p5  = getPctP(prPeriod * 5)
+p10 = getPctP(prPeriod * 10)
+px  = (p1 + p3 + p5 + p10) / 4
+
+// === Calculate %B Stack ===
+b1  = getPctB(bbPeriod)
+b3  = getPctB(bbPeriod * 3)
+b5  = getPctB(bbPeriod * 5)
+b10 = getPctB(bbPeriod * 10)
+bx  = (b1 + b3 + b5 + b10) / 4
+
+// === Calculate %V Stack ===
+v1  = getPctV(volPeriod, volPeriod * 10)
+v3  = getPctV(volPeriod * 3, volPeriod * 10)
+v5  = getPctV(volPeriod * 5, volPeriod * 10)
+v10 = 50.0
+vx  = (v1 + v3 + v5 + v10) / 4
+
+// === Vertical Composites (%Y) ===
+y1  = (p1 + b1 + v1) / 3
+y3  = (p3 + b3 + v3) / 3
+y5  = (p5 + b5 + v5) / 3
+y10 = (p10 + b10 + v10) / 3
+
+// === Final TDF Rating ===
+xComposite = (px + bx + vx) / 3
+yComposite = (y1 + y3 + y5 + y10) / 4
+tdfRating  = (xComposite + yComposite) / 2
+
+tdfSmoothed = ta.ema(tdfRating, smoothing)
+tdfLineColor = getColor(tdfSmoothed, 0)
+tdfCandleColor = getColor(tdfSmoothed, opacity)
+hasTdfRating = not na(tdfSmoothed)
+overlayLine = hasTdfRating ? close : ta.sma(close, 1)
+overlayColor = hasTdfRating ? tdfLineColor : fallbackColor
+
+plot(overlayLine, "TDF-Colored Price", color = overlayColor, linewidth = 2)
+barcolor(hasTdfRating ? tdfCandleColor : na, title = "TDF-Colored Candles")
+
+var line currentPriceLine = na
+
+if bar_index >= 1
+    line.delete(currentPriceLine)
+
+    if showCurrentPriceLine
+        currentPriceLine := line.new(
+             x1 = bar_index - 1,
+             y1 = close,
+             x2 = bar_index,
+             y2 = close,
+             xloc = xloc.bar_index,
+             extend = extend.both,
+             color = overlayColor,
+             width = currentLineWidth,
+             style = getLineStyle(currentLineStyleInput)
+        )
