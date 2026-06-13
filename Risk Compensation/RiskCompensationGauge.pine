@@ -29,12 +29,12 @@ indicator("Risk Compensation(%)", "668 RCG", overlay = false)
 // carrying risk over the selected Basis Period.
 //
 // Compensation Environment (Mechanics):
-// Averages recent Basis Compensation measurements over the
-// Compensation Environment Period.
+// Applies an exponential moving average to Basis Compensation
+// over the Compensation Environment Period.
 //
 // Each Basis value represents a separate sliding-window return,
-// and the Compensation Environment is the average of those
-// recent compensation outcomes.
+// with greater weight given to the most recent compensation
+// outcomes so the environment responds sooner to change.
 //
 // Compensation Environment (Meaning):
 // Represents the recent compensation regime,
@@ -42,8 +42,8 @@ indicator("Risk Compensation(%)", "668 RCG", overlay = false)
 // or deteriorating relative to recent history.
 //
 // Structural Compensation Environment (Mechanics):
-// Averages Basis Compensation measurements over a longer horizon,
-// creating a deeper compensation baseline.
+// Applies a simple moving average to Basis Compensation over a
+// longer horizon, creating an equal-weight structural baseline.
 //
 // Structural Compensation Environment (Meaning):
 // Represents the longer-term compensation regime,
@@ -79,18 +79,19 @@ indicator("Risk Compensation(%)", "668 RCG", overlay = false)
 // 2. Is compensation improving or deteriorating?
 // 3. Is the recent compensation environment stronger or weaker
 //    than the longer-term compensation structure?
-// 4. Is the compensation sufficient to justify carrying the risk?
+// 4. Is the market currently rewarding or penalizing the
+//    acceptance of risk?
 
 // ── Inputs ─────────────────────────────────────────────
-basisPeriod        = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current compensation.")
-environmentPeriod  = input.int(12, "Compensation Environment Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the current compensation environment.")
-structuralPeriod   = input.int(60, "Structural Environment Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the structural compensation environment.")
+basisPeriod        = input.int(12, "Basis Period", minval = 1, tooltip = "Chart bars in the sliding return window used to measure current compensation. For example, 12 bars means 12 days on a daily chart or 12 weeks on a weekly chart.")
+environmentPeriod  = input.int(12, "Compensation Environment Period", minval = 1, tooltip = "Chart bars used by the exponential moving average of Basis Compensation. Recent outcomes receive greater weight, allowing the environment to respond sooner to change.")
+structuralPeriod   = input.int(60, "Structural Environment Period", minval = 1, tooltip = "Chart bars included in the simple moving average of Basis Compensation. Each outcome receives equal weight to create a slower structural baseline.")
 
 // ── Risk Compensation Calculation ──────────────────────
 basePrice = close[basisPeriod]
 
 basisRoR       = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
-environmentRoR = ta.sma(basisRoR, environmentPeriod)
+environmentRoR = ta.ema(basisRoR, environmentPeriod)
 structuralRoR  = ta.sma(basisRoR, structuralPeriod)
 
 // ── Plots ──────────────────────────────────────────────

@@ -1,8 +1,9 @@
 //@version=6
 indicator("668 RCG Overlay", "RCG Overlay", overlay=true)
 // ── Inputs
-basisPeriod = input.int(12, "Basis Period", minval = 1, tooltip = "Sliding lookback window used to measure current risk compensation.")
-trendPeriod = input.int(12, "Trend Period", minval = 1, tooltip = "Number of recent Basis measurements averaged to reveal the compensation trend.")
+basisPeriod       = input.int(12, "Basis Period", minval = 1, tooltip = "Chart bars in the sliding return window used to measure current compensation. For example, 12 bars means 12 days on a daily chart or 12 weeks on a weekly chart.")
+environmentPeriod = input.int(12, "Compensation Environment Period", minval = 1, tooltip = "Chart bars used by the exponential moving average of Basis Compensation. Recent outcomes receive greater weight, allowing the environment to respond sooner to change.")
+structuralPeriod  = input.int(60, "Structural Environment Period", minval = 1, tooltip = "Chart bars included in the simple moving average of Basis Compensation. Each outcome receives equal weight to create a slower structural baseline.")
 
 // Overlay Colors
 aboveColor   = input.color(color(#90bff9), "Above Zero Color")
@@ -21,22 +22,25 @@ currentLineWidth = input.int(1, "Current Price Line Width", minval=1, maxval=5)
 
 // Window Options
 showBasisWindow = input.bool(false, "Show Basis Window")
-showTrendWindow = input.bool(false, "Show Trend Window")
+showEnvironmentWindow = input.bool(false, "Show Environment Window")
 
 basisLineColor = input.color(color.rgb(184, 184, 184), "Basis Window Line Color")
-trendLineColor = input.color(color.rgb(16, 172, 175), "Trend Window Line Color")
+environmentLineColor = input.color(color.rgb(16, 172, 175), "Environment Window Line Color")
 
 // ── RCG Calculation
 basePrice = close[basisPeriod]
-basisRoR  = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
-trendRoR  = ta.sma(basisRoR, trendPeriod)
-compDifferential = basisRoR - trendRoR
+basisRoR       = na(basePrice) ? na : ((close - basePrice) / basePrice) * 100
+environmentRoR = ta.ema(basisRoR, environmentPeriod)
+structuralRoR  = ta.sma(basisRoR, structuralPeriod)
+compDifferential = basisRoR - environmentRoR
 
-// ── Full Trend Compensation Window
-colorLookback = basisPeriod + trendPeriod - 1
+// ── Environment Display Window
+// This finite span scales the color gradient and draws the optional
+// window. The EMA itself retains exponentially decreasing older data.
+environmentLookback = basisPeriod + environmentPeriod - 1
 
-highestPositive = ta.highest(math.max(trendRoR, 0), colorLookback)
-lowestNegative  = ta.lowest(math.min(trendRoR, 0), colorLookback)
+highestPositive = ta.highest(math.max(environmentRoR, 0), environmentLookback)
+lowestNegative  = ta.lowest(math.min(environmentRoR, 0), environmentLookback)
 
 positiveSpan = math.max(highestPositive, 0.0001)
 negativeSpan = math.max(math.abs(lowestNegative), 0.0001)
@@ -68,25 +72,31 @@ getTextSize(sizeInput) =>
         "Large"  => size.large
         "Huge"   => size.huge
 
-overlayColor = getCompColor(trendRoR)
+overlayColor = getCompColor(environmentRoR)
 
 // ── Compensation Environment Language
 stateText =
-     na(trendRoR) ? "Unavailable" :
-     trendRoR > 0 ? "Positive" :
-     trendRoR < 0 ? "Negative" :
+     na(environmentRoR) ? "Unavailable" :
+     environmentRoR > 0 ? "Positive" :
+     environmentRoR < 0 ? "Negative" :
      "Transitional"
 
 directionText =
-     na(basisRoR) or na(trendRoR) ? "" :
-     basisRoR > trendRoR ? "Improving" :
-     basisRoR < trendRoR ? "Deteriorating" :
+     na(basisRoR) or na(environmentRoR) ? "" :
+     basisRoR > environmentRoR ? "Improving" :
+     basisRoR < environmentRoR ? "Deteriorating" :
      "Stable"
+
+structuralText =
+     na(environmentRoR) or na(structuralRoR) ? "" :
+     environmentRoR > structuralRoR ? " | Above Structure" :
+     environmentRoR < structuralRoR ? " | Below Structure" :
+     " | At Structure"
 
 environmentText =
      stateText == "Unavailable" ? "Compensation Environment: Unavailable" :
      "Compensation Environment: " + stateText + " and " + directionText +
-     " (" + str.tostring(compDifferential, "#.#") + "%)"
+     " (" + str.tostring(compDifferential, "#.#") + "%)" + structuralText
 
 // ── Compensation Environment Display
 var table envTable = table.new(position.bottom_right, 1, 1)
@@ -115,14 +125,14 @@ plot(
 
 // ── Drawing Objects
 var line basisLine = na
-var line trendLine = na
+var line environmentLine = na
 var line currentPriceLine = na
 
 // ── Draw Compensation Windows And Current Price Line
-if bar_index >= colorLookback
+if bar_index >= environmentLookback
 
     line.delete(basisLine)
-    line.delete(trendLine)
+    line.delete(environmentLine)
     line.delete(currentPriceLine)
 
     if showBasisWindow
@@ -138,15 +148,15 @@ if bar_index >= colorLookback
              style = line.style_solid
         )
 
-    if showTrendWindow
-        trendLine := line.new(
-             x1 = bar_index - colorLookback,
-             y1 = close[colorLookback],
+    if showEnvironmentWindow
+        environmentLine := line.new(
+             x1 = bar_index - environmentLookback,
+             y1 = close[environmentLookback],
              x2 = bar_index,
              y2 = close,
              xloc = xloc.bar_index,
              extend = extend.none,
-             color = trendLineColor,
+             color = environmentLineColor,
              width = 1,
              style = line.style_solid
         )
